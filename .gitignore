@@ -29,3 +29,7 @@ functions/lib/
 
 # TypeScript
 *.tsbuildinfo
+
+.env
+.env.*
+!.env.example

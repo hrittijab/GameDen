@@ -2,22 +2,22 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 
 import {
-    connectAuthEmulator,
-    getAuth,
+  connectAuthEmulator,
+  getAuth,
 } from 'firebase/auth';
 
 import {
-    connectFirestoreEmulator,
-    getFirestore,
+  connectFirestoreEmulator,
+  getFirestore,
 } from 'firebase/firestore';
 
 import {
-    connectFunctionsEmulator,
-    getFunctions,
+  connectFunctionsEmulator,
+  getFunctions,
 } from 'firebase/functions';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyAs8oKxIGmz7b8Q18jTYuTNfgkt5ec-RIo',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: 'gameden-online.firebaseapp.com',
   projectId: 'gameden-online',
   storageBucket: 'gameden-online.firebasestorage.app',
