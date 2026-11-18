@@ -14,7 +14,7 @@ import {
     auth,
     db,
     functions,
-} from '../config/firebase';
+} from '../../config/firebase';
 
 // ==========================================
 // CONFIGURATION
@@ -304,3 +304,4 @@ export function useColorClashPresence(
     error,
   };
 }
+

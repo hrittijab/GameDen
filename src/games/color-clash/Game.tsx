@@ -45,22 +45,22 @@ import {
     type ColorClashRoom,
     type PrivateHand,
     type UnoWindow,
-} from '../../services/colorClashRooms';
+} from './colorClashRooms';
 
 import {
     leaveColorClashRoom,
     useColorClashPresence,
     type ConnectionStatus,
-} from '../../services/colorClashPresence';
+} from './colorClashPresence';
 
 import {
     clearColorClashSession,
     saveColorClashSession,
-} from '../../services/colorClashSession';
+} from './colorClashSession';
 
 import {
     useColorClashSounds,
-} from '../../services/colorClashSounds';
+} from './colorClashSounds';
 
 // ==========================================
 // CONFIGURATION
@@ -1648,7 +1648,7 @@ export default function ColorClashGame() {
     }
 
     router.replace(
-      '/color-clash' as Href,
+      '/multiplayer/color-clash' as Href,
     );
   };
 
@@ -3512,3 +3512,5 @@ const s = StyleSheet.create({
     borderRadius: 2,
   },
 });
+
+

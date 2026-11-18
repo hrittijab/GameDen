@@ -92,7 +92,7 @@ export default function HomeScreen() {
       return;
     }
     if (game.id === 'colorclash') {
-      router.push('/color-clash' as Href);
+      router.push('/multiplayer/color-clash' as Href);
       return;
     }
 
@@ -462,3 +462,4 @@ const styles = StyleSheet.create({
     marginTop: 30,
   },
 });
+

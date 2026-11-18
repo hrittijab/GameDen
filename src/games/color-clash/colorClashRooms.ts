@@ -17,7 +17,7 @@ import {
   auth,
   db,
   functions,
-} from '../config/firebase';
+} from '../../config/firebase';
 
 // ==========================================
 // CONFIGURATION
@@ -601,3 +601,4 @@ export const rematchColorClashGame = (
     code: validateCode(code),
     revision,
   });
+

@@ -14,23 +14,23 @@ export function useColorClashSounds(
   enabled: boolean,
 ) {
   const playSound = useAudioPlayer(
-    require('../../assets/color-clash/play.wav'),
+    require('../../../assets/color-clash/play.wav'),
   );
 
   const drawSound = useAudioPlayer(
-    require('../../assets/color-clash/draw.wav'),
+    require('../../../assets/color-clash/draw.wav'),
   );
 
   const unoSound = useAudioPlayer(
-    require('../../assets/color-clash/uno.wav'),
+    require('../../../assets/color-clash/uno.wav'),
   );
 
   const winSound = useAudioPlayer(
-    require('../../assets/color-clash/win.wav'),
+    require('../../../assets/color-clash/win.wav'),
   );
 
   const dealSound = useAudioPlayer(
-    require('../../assets/color-clash/deal.wav'),
+    require('../../../assets/color-clash/deal.wav'),
   );
 
   const sound = useCallback(
@@ -105,3 +105,4 @@ export function useColorClashSounds(
     feedback,
   };
 }
+

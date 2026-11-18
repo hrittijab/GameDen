@@ -1,7 +1,6 @@
 
 import {
-  useRouter,
-  type Href,
+  useRouter
 } from 'expo-router';
 
 import {
@@ -29,19 +28,19 @@ import {
   startColorClashGame,
   subscribeToColorClashRoom,
   type ColorClashRoom,
-} from '../../services/colorClashRooms';
+} from './colorClashRooms';
 
 import {
   kickColorClashPlayer,
   leaveColorClashRoom,
   useColorClashPresence,
-} from '../../services/colorClashPresence';
+} from './colorClashPresence';
 
 import {
   clearColorClashSession,
   getColorClashSession,
   saveColorClashSession,
-} from '../../services/colorClashSession';
+} from './colorClashSession';
 
 // ==========================================
 // TYPES
@@ -334,14 +333,14 @@ export default function ColorClashScreen() {
     }
 
     navigating.current = true;
-
     router.replace({
-      pathname: '/color-clash/game',
-
+      pathname: '/multiplayer/[game]/match',
       params: {
-        code: roomCode,
+        game: 'color-clash',
+        code:  roomCode,
       },
-    } as Href);
+    });
+    
   }, [
     roomCode,
     room,
@@ -1509,3 +1508,5 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
 });
+
+
