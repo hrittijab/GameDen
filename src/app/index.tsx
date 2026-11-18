@@ -1,465 +1,327 @@
-
-import { useRouter, type Href } from 'expo-router';
 import {
-  Alert,
-  Platform,
+  useRouter,
+  type Href,
+} from 'expo-router';
+
+import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
+  Pressable,
+  useWindowDimensions,
 } from 'react-native';
 
-type Game = {
-  id: string;
-  name: string;
-  emoji: string;
-  category: string;
-  color: string;
-  available: boolean;
-};
+import {
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
-const games: Game[] = [
-  {
-    id: 'imposter',
-    name: 'Imposter',
-    emoji: '🕵️',
-    category: 'Party',
-    color: '#6249A5',
-    available: true,
-  },
-  {
-    id: 'charades',
-    name: 'Charades',
-    emoji: '🎭',
-    category: 'Party',
-    color: '#277E8E',
-    available: true,
-  },
-  {
-    id: 'neverhave',
-    name: 'Never Have I Ever',
-    emoji: '🙈',
-    category: 'Party',
-    color: '#8350A9',
-    available: true,
-  },
-  {
-    id: 'whoami',
-    name: 'Who Am I?',
-    emoji: '❓',
-    category: 'Party',
-    color: '#8765A8',
-    available: true,
-  },
-  {
-    id: 'colorclash',
-    name: 'Color Clash',
-    emoji: '🎴',
-    category: 'Card Game',
-    color: '#E88B57',
-    available: true,
-  },
-  {
-    id: 'chess',
-    name: 'Chess',
-    emoji: '♟️',
-    category: 'Board',
-    color: '#49788B',
-    available: false,
-  },
-];
+import ArtworkCard from '../components/ArtworkCard';
+
+import {
+  CATEGORIES,
+  GAMES,
+  getAvailableGameCount,
+} from '../constants/games';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
 
-  const handleGamePress = (game: Game) => {
-    if (game.id === 'imposter') {
-      router.push('/imposter');
-      return;
-    }
+  const wide = width >= 950;
 
-    if (game.id === 'charades') {
-      router.push('/charades');
-      return;
-    }
-    if (game.id === 'neverhave') {
-      router.push('/never-have-i-ever' as Href);
-      return;
-    }
-    if (game.id === 'whoami') {
-      router.push('/who-am-i' as Href);
-      return;
-    }
-    if (game.id === 'colorclash') {
-      router.push('/multiplayer/color-clash' as Href);
-      return;
-    }
-
-    const message = `${game.name} is coming soon to GameDen!`;
-
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined') {
-        window.alert(message);
-      }
-    } else {
-      Alert.alert(game.name, message);
-    }
-};
-
-  const availableGames = games.filter((game) => game.available);
+  const availableCount =
+    GAMES.filter(game => game.available).length;
 
   return (
-    <View style={styles.container}>
+    <View style={s.root}>
       <ScrollView
-        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          s.content,
+          {
+            paddingTop: Math.max(insets.top + 20, 35),
+            paddingBottom: insets.bottom + 30,
+          },
+        ]}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.logo}>🎮 GameDen</Text>
+        {/* BRAND */}
 
-            <Text style={styles.subtitle}>
-              Your games. Your people. Your den.
-            </Text>
-          </View>
+        <View style={s.header}>
+          <View style={s.brand}>
+            <View style={s.brandMark}>
+              <Text style={s.brandLetter}>G</Text>
+            </View>
 
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>G</Text>
+            <View>
+              <Text style={s.logo}>
+                Game<Text style={s.logoAccent}>Den</Text>
+              </Text>
+
+              <Text style={s.tagline}>
+                Your games. Your people. Your den.
+              </Text>
+            </View>
           </View>
         </View>
 
-        {/* Welcome Banner */}
-        <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>
+        {/* WELCOME */}
+
+        <View style={s.intro}>
+          <Text style={s.eyebrow}>
             WELCOME TO YOUR DEN
           </Text>
 
-          <Text style={styles.heroTitle}>
-            It's game night!
+          <Text style={s.heading}>
+            It's game night.
           </Text>
 
-          <Text style={styles.heroDescription}>
-            One place for games, laughs, and unforgettable moments.
-            Gather your friends and start playing!
-          </Text>
-
-          <TouchableOpacity
-            style={styles.heroButton}
-            onPress={() => router.push('/imposter')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.heroButtonText}>
-              Play Imposter →
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Games Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            Discover Games
-          </Text>
-
-          <Text style={styles.gameCount}>
-            {games.length} games
+          <Text style={s.subtitle}>
+            Play together, challenge your friends,
+            or enjoy a game on your own.
           </Text>
         </View>
 
-        {/* Game Grid */}
-        <View style={styles.grid}>
-          {games.map((game) => (
-            <TouchableOpacity
-              key={game.id}
-              style={[
-                styles.gameCard,
-                { backgroundColor: game.color },
-              ]}
-              onPress={() => handleGamePress(game)}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel={`${game.name}, ${
-                game.available ? 'play now' : 'coming soon'
-              }`}
-            >
-              <Text style={styles.gameEmoji}>
-                {game.emoji}
-              </Text>
+        {/* CATEGORY HEADER */}
 
-              <View>
-                <Text style={styles.gameName}>
-                  {game.name}
-                </Text>
+        <View style={s.sectionHeader}>
+          <Text style={s.sectionTitle}>
+            Choose your game mode
+          </Text>
 
-                <Text style={styles.gameCategory}>
-                  {game.category} Game
-                </Text>
-              </View>
+          <Text style={s.count}>
+            {CATEGORIES.length} categories
+          </Text>
+        </View>
 
+        {/* CATEGORY ARTWORK */}
+
+        <View style={[
+          s.categories,
+          wide && s.categoriesWide,
+        ]}>
+          {CATEGORIES.map(category => {
+            const count =
+              getAvailableGameCount(category.id);
+
+            return (
               <View
+                key={category.id}
                 style={[
-                  styles.statusBadge,
-                  game.available
-                    ? styles.availableBadge
-                    : styles.comingSoonBadge,
+                  s.categoryItem,
+                  wide && s.categoryItemWide,
                 ]}
               >
-                <Text style={styles.statusText}>
-                  {game.available ? 'PLAY NOW' : 'COMING SOON'}
-                </Text>
+                <ArtworkCard
+                  title={category.title}
+                  description={category.description}
+                  image={category.image}
+                  color={category.color}
+                  accent={category.accent}
+                  banner
+                  meta={
+                    count === 0
+                      ? 'Coming soon'
+                      : `${count} ${count === 1 ? 'game' : 'games'} available`
+                  }
+                  onPress={() =>
+                    router.push(
+                      `/category/${category.id}` as Href
+                    )
+                  }
+                />
               </View>
-            </TouchableOpacity>
-          ))}
+            );
+          })}
         </View>
 
-        {/* Available Games Summary */}
-        <View style={styles.availableSection}>
-          <Text style={styles.availableTitle}>
-            ✨ Ready to play
-          </Text>
+        {/* GAME LIBRARY */}
 
-          <Text style={styles.availableDescription}>
-            {availableGames.length} game available now.
-            More games are being added to GameDen!
-          </Text>
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/explore')}
+          style={({ pressed }) => [
+            s.library,
+            pressed && { opacity: 0.75 },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={s.libraryTitle}>
+              Explore all games
+            </Text>
 
-        {/* Future Features */}
-        <View style={styles.footerCard}>
-          <Text style={styles.footerTitle}>
-            🏠 Your Den is growing
-          </Text>
+            <Text style={s.libraryDescription}>
+              {availableCount} games ready to play.
+              Discover the entire collection.
+            </Text>
+          </View>
 
-          <Text style={styles.footerDescription}>
-            Multiplayer rooms, private invites, achievements,
-            and even more games are coming soon.
-          </Text>
-        </View>
+          <Text style={s.libraryArrow}>→</Text>
+        </Pressable>
 
-        <Text style={styles.footerText}>
-          Made for game nights and good memories 💜
+        <Text style={s.footer}>
+          More games. More memories.
         </Text>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
-    backgroundColor: '#15182D',
+    backgroundColor: '#121629',
   },
 
   content: {
     width: '100%',
-    maxWidth: 900,
+    maxWidth: 1150,
     alignSelf: 'center',
     paddingHorizontal: 20,
-    paddingTop: 45,
-    paddingBottom: 60,
   },
 
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 32,
   },
 
-  headerText: {
-    flex: 1,
-    paddingRight: 12,
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  brandMark: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    backgroundColor: '#A5E1EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  brandLetter: {
+    color: '#121629',
+    fontSize: 28,
+    fontWeight: '900',
   },
 
   logo: {
-    fontSize: 29,
-    fontWeight: '800',
     color: '#FFFFFF',
+    fontSize: 30,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+
+  logoAccent: {
+    color: '#A5E1EB',
+  },
+
+  tagline: {
+    color: '#A6A9C4',
+    fontSize: 11,
+    marginTop: 3,
+  },
+
+  intro: {
+    gap: 10,
+    marginBottom: 30,
+  },
+
+  eyebrow: {
+    color: '#B5A5FC',
+    letterSpacing: 2,
+    fontWeight: '900',
+    fontSize: 11,
+  },
+
+  heading: {
+    color: '#FFFFFF',
+    fontSize: 38,
+    fontWeight: '900',
+    letterSpacing: -1,
   },
 
   subtitle: {
     color: '#A6A9C4',
-    fontSize: 12,
-    marginTop: 6,
-  },
-
-  avatar: {
-    backgroundColor: '#7463C5',
-    height: 46,
-    width: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  avatarText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-
-  hero: {
-    backgroundColor: '#31315B',
-    padding: 24,
-    borderRadius: 22,
-    marginBottom: 30,
-  },
-
-  heroEyebrow: {
-    color: '#C5BAFF',
-    fontSize: 11,
-    fontWeight: 'bold',
-    letterSpacing: 1.5,
-  },
-
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 31,
-    fontWeight: '800',
-    marginTop: 12,
-  },
-
-  heroDescription: {
-    color: '#D0CEE7',
-    fontSize: 14,
-    lineHeight: 23,
-    marginTop: 10,
-    marginBottom: 22,
-  },
-
-  heroButton: {
-    backgroundColor: '#A991FF',
-    paddingVertical: 14,
-    paddingHorizontal: 22,
-    alignSelf: 'flex-start',
-    borderRadius: 12,
-  },
-
-  heroButtonText: {
-    color: '#17142E',
     fontSize: 15,
-    fontWeight: '800',
+    lineHeight: 23,
+    maxWidth: 500,
   },
 
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 18,
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 16,
   },
 
   sectionTitle: {
-    fontSize: 22,
-    fontWeight: '800',
     color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+    flex: 1,
   },
 
-  gameCount: {
-    fontSize: 12,
+  count: {
     color: '#A6A9C4',
+    fontSize: 11,
   },
 
-  grid: {
+  categories: {
+    gap: 18,
+  },
+
+  categoriesWide: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    alignItems: 'stretch',
   },
 
-  gameCard: {
-    width: '48%',
-    minHeight: 190,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    justifyContent: 'space-between',
+  categoryItem: {
+    width: '100%',
   },
 
-  gameEmoji: {
-    fontSize: 36,
+  categoryItemWide: {
+    width: undefined,
+    flex: 1,
+    minWidth: 0,
   },
 
-  gameName: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 17,
-    marginTop: 12,
-  },
-
-  gameCategory: {
-    color: '#F0EAFB',
-    fontSize: 12,
-    marginTop: 5,
-  },
-
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginTop: 12,
-  },
-
-  availableBadge: {
-    backgroundColor: 'rgba(60, 200, 130, 0.30)',
-  },
-
-  comingSoonBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.17)',
-  },
-
-  statusText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    letterSpacing: 1,
-    fontWeight: '800',
-  },
-
-  availableSection: {
-    backgroundColor: '#303452',
-    borderRadius: 18,
-    padding: 20,
-    marginTop: 8,
-  },
-
-  availableTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-
-  availableDescription: {
-    color: '#CBCDE0',
-    fontSize: 13,
-    lineHeight: 21,
-  },
-
-  footerCard: {
+  library: {
+    marginTop: 24,
     backgroundColor: '#242841',
     borderRadius: 18,
     padding: 20,
-    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderWidth: 1,
+    borderColor: '#FFFFFF12',
   },
 
-  footerTitle: {
+  libraryTitle: {
     color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '800',
+    fontSize: 19,
+    fontWeight: '900',
   },
 
-  footerDescription: {
+  libraryDescription: {
     color: '#A6A9C4',
     fontSize: 13,
-    lineHeight: 21,
-    marginTop: 8,
+    lineHeight: 20,
+    marginTop: 6,
   },
 
-  footerText: {
-    color: '#777C9E',
+  libraryArrow: {
+    color: '#A5E1EB',
+    fontSize: 30,
+  },
+
+  footer: {
     textAlign: 'center',
+    color: '#7F85A6',
     fontSize: 12,
     marginTop: 30,
   },
 });
-
