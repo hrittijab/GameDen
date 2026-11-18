@@ -70,11 +70,11 @@ const NATIVE_ANIMATION =
   Platform.OS !== 'web';
 
 const COLORS = {
-  red: '#D73D53',
-  blue: '#2478D0',
-  green: '#16865A',
-  yellow: '#BA8B15',
-  wild: '#7547AE',
+  red: '#E33248',
+  blue: '#2878D8',
+  green: '#169D63',
+  yellow: '#D6A017',
+  wild: '#111318',
 };
 
 const COLOR_NAMES: ColorClashColor[] = [
@@ -128,35 +128,61 @@ function label(value: string) {
 // PLAYING CARD
 // ==========================================
 
+
 const Card = memo(function Card({
   card,
 }: {
   card: ColorClashCard;
 }) {
-  const background =
-    COLORS[card.color as keyof typeof COLORS]
-    ?? COLORS.wild;
+  const isWild = card.color === 'wild' ||
+    card.value === 'wild' || card.value === 'wild4';
+  const isDrawFour = card.value === 'wild4';
+  const background = isWild ? COLORS.wild :
+    COLORS[card.color as keyof typeof COLORS] ?? COLORS.wild;
+  const symbol = label(card.value);
 
   return (
-    <View
-      style={[
-        s.card,
-        { backgroundColor: background },
-      ]}
-    >
-      <Text style={s.corner}>
-        {label(card.value)}
-      </Text>
-
-      <View style={s.cardOval}>
-        <Text style={s.cardValue}>
-          {label(card.value)}
-        </Text>
-      </View>
-
-      <Text style={s.cardColor}>
-        {card.color.toUpperCase()}
-      </Text>
+    <View style={[s.card, { backgroundColor: background }, isWild && s.wildCardShell]}>
+      <View pointerEvents="none" style={s.cardInnerBorder} />
+      <Text style={s.corner}>{symbol}</Text>
+      {isWild ? (
+        <View style={s.wildFace}>
+          <View style={s.wildEmblem}>
+            {isDrawFour ? (
+              <>
+                {COLOR_NAMES.map((color, index) => (
+                  <View key={color} style={[s.wildMiniCard, {
+                    backgroundColor: COLORS[color],
+                    left: 3 + index * 5,
+                    top: 4 + (index % 2) * 2,
+                    transform: [{ rotate: `${-18 + index * 12}deg` }],
+                  }]} />
+                ))}
+                <Text style={s.wildFour}>+4</Text>
+              </>
+            ) : (
+              <View style={s.wildColorWheel}>
+                <View style={s.wildRow}>
+                  <View style={[s.wildSegment, { backgroundColor: COLORS.red }]} />
+                  <View style={[s.wildSegment, { backgroundColor: COLORS.blue }]} />
+                </View>
+                <View style={s.wildRow}>
+                  <View style={[s.wildSegment, { backgroundColor: COLORS.green }]} />
+                  <View style={[s.wildSegment, { backgroundColor: COLORS.yellow }]} />
+                </View>
+              </View>
+            )}
+          </View>
+          <Text style={s.wildCaption}>{isDrawFour ? 'DRAW FOUR' : 'WILD'}</Text>
+        </View>
+      ) : (
+        <View style={s.cardOval}>
+          <Text style={[s.cardValue, { color: background, fontSize: symbol.length > 1 ? 21 : 32 }]}>
+            {symbol}
+          </Text>
+        </View>
+      )}
+      <Text style={s.cornerBottom}>{symbol}</Text>
     </View>
   );
 });
@@ -3073,53 +3099,130 @@ const s = StyleSheet.create({
   // CARD DESIGN
   // ========================================
 
+  
   card: {
     width: 52,
     height: 83,
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
-    padding: 4,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  cardOval: {
-    width: 35,
-    height: 43,
-    borderRadius: 23,
-    backgroundColor: '#FFFFFF29',
+    borderColor: '#FFF7E8',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ rotate: '-15deg' }],
+    position: 'relative',
+    shadowColor: '#000000',
+    shadowOffset: { width: 2, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 5,
   },
-
+  wildCardShell: {
+    borderColor: '#E7E3DA',
+  },
+  cardInnerBorder: {
+    position: 'absolute',
+    top: 3,
+    bottom: 3,
+    left: 3,
+    right: 3,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#FFFFFF35',
+    zIndex: 1,
+  },
+  cardOval: {
+    width: 32,
+    height: 53,
+    borderRadius: 24,
+    backgroundColor: '#FFF7E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '22deg' }],
+    zIndex: 2,
+  },
   cardValue: {
-    color: '#FFFFFF',
-    fontSize: 23,
     fontWeight: '900',
-    transform: [{ rotate: '15deg' }],
+    transform: [{ rotate: '-22deg' }],
+    textAlign: 'center',
   },
-
   corner: {
+    position: 'absolute',
+    top: 3,
+    left: 4,
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '900',
-    alignSelf: 'flex-start',
+    zIndex: 3,
   },
-
-  cardColor: {
+  cornerBottom: {
+    position: 'absolute',
+    bottom: 3,
+    right: 4,
     color: '#FFFFFF',
-    fontSize: 7,
-    fontWeight: '800',
+    fontSize: 10,
+    fontWeight: '900',
+    transform: [{ rotate: '180deg' }],
+    zIndex: 3,
   },
-
+  wildFace: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+    gap: 3,
+  },
+  wildEmblem: {
+    width: 36,
+    height: 40,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wildColorWheel: {
+    width: 31,
+    height: 38,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#FFF7E8',
+    transform: [{ rotate: '25deg' }],
+  },
+  wildRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  wildSegment: {
+    flex: 1,
+  },
+  wildMiniCard: {
+    position: 'absolute',
+    width: 14,
+    height: 23,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  wildFour: {
+    position: 'absolute',
+    bottom: 0,
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 19,
+    textShadowColor: '#000000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  wildCaption: {
+    color: '#F3EBDD',
+    fontSize: 6,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
   cardBack: {
     width: 52,
     height: 83,
     borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: '#FFF7E8',
     backgroundColor: '#382858',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3146,7 +3249,13 @@ const s = StyleSheet.create({
   },
 
   highlight: {
-    borderColor: '#A5E1EB',
+    borderColor: '#FFE0A1',
+    backgroundColor: '#FFE0A115',
+    transform: [{ translateY: -4 }],
+    shadowColor: '#FFD071',
+    shadowOpacity: 0.65,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
   },
 
   dim: {
