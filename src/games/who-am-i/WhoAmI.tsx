@@ -14,7 +14,7 @@ import {
     WHO_AM_I_OPTIONS,
     getWhoAmIWords,
     type WhoAmISelection,
-} from '../../data/whoAmIWords';
+} from './whoAmIWords';
 
 type Phase =
   | 'setup'
@@ -862,3 +862,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+

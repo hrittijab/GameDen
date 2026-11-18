@@ -14,7 +14,7 @@ import {
     NEVER_CATEGORY_OPTIONS,
     getNeverQuestions,
     type NeverSelection,
-} from '../../data/neverHaveIEverQuestions';
+} from './neverHaveIEverQuestions';
 
 type Phase =
   | 'setup'
@@ -869,3 +869,4 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 });
+

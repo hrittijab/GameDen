@@ -13,7 +13,7 @@ import {
     CHARADES_OPTIONS,
     getCharadesWords,
     type CharadesSelection,
-} from '../../data/charadesWords';
+} from './charadesWords';
 
 type Phase =
   | 'setup'
@@ -866,3 +866,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+

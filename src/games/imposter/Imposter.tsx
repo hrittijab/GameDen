@@ -1,6 +1,6 @@
 
-import { CATEGORIES } from '@/data/imposterCategories';
-import { IMPOSTER_HINTS } from '@/data/imposterHints';
+import { CATEGORIES } from './imposterCategories';
+import { IMPOSTER_HINTS } from './imposterHints';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -867,3 +867,4 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 });
+
