@@ -1,307 +1,76 @@
-
-import { useEffect, useState } from 'react';
-
 import {
-    collection,
-    onSnapshot,
-} from 'firebase/firestore';
+  sendHeartbeat,
+  leaveRoom,
+  kickPlayer,
+  startHeartbeat,
+  subscribeToPresence,
+  useMultiplayerPresence,
+} from '../../multiplayer/presence';
 
-import { httpsCallable } from 'firebase/functions';
+import type {
+  PresenceConfig,
+  PresenceMap,
+} from '../../multiplayer/types';
 
-import { AppState } from 'react-native';
+export {
+  HEARTBEAT_INTERVAL,
+  OFFLINE_THRESHOLD,
+  getConnectionStatus,
+} from '../../multiplayer/presence';
 
-import {
-    auth,
-    db,
-    functions,
-} from '../../config/firebase';
+export type {
+  PlayerPresence,
+  PresenceMap,
+  ConnectionStatus,
+} from '../../multiplayer/types';
 
-// ==========================================
-// CONFIGURATION
-// ==========================================
-
-export const HEARTBEAT_INTERVAL = 10000;
-export const OFFLINE_THRESHOLD = 35000;
-
-export type PlayerPresence = {
-  uid: string;
-  lastSeen: number;
+const CONFIG: PresenceConfig = {
+  collection: 'colorClashRooms',
+  heartbeatFunction: 'heartbeatColorClash',
+  leaveFunction: 'leaveColorClashRoom',
+  kickFunction: 'kickColorClashPlayer',
 };
 
-export type PresenceMap = Record<
-  string,
-  PlayerPresence
->;
-
-export type ConnectionStatus =
-  | 'online'
-  | 'offline'
-  | 'connecting';
-
-// ==========================================
-// SERVER CALL
-// ==========================================
-
-async function callLifecycle(
-  name: string,
-  data: Record<string, unknown>,
-): Promise<void> {
-  await auth.authStateReady();
-
-  if (!auth.currentUser) {
-    throw new Error(
-      'Your guest session has expired.',
-    );
-  }
-
-  const callable = httpsCallable<
-    Record<string, unknown>,
-    { success: boolean }
-  >(functions, name, {
-    timeout: 10000,
-  });
-
-  const result = await callable(data);
-
-  if (!result.data.success) {
-    throw new Error(
-      'Room action failed.',
-    );
-  }
-}
-
-// ==========================================
-// HEARTBEAT
-// ==========================================
-
-export async function sendColorClashHeartbeat(
+export const sendColorClashHeartbeat = (
   code: string,
-) {
-  await callLifecycle(
-    'heartbeatColorClash',
-    { code },
-  );
-}
+) =>
+  sendHeartbeat(CONFIG, code);
 
-// ==========================================
-// LEAVE ROOM
-// ==========================================
-
-export async function leaveColorClashRoom(
+export const leaveColorClashRoom = (
   code: string,
-) {
-  await callLifecycle(
-    'leaveColorClashRoom',
-    { code },
-  );
-}
+) =>
+  leaveRoom(CONFIG, code);
 
-// ==========================================
-// KICK PLAYER
-// ==========================================
-
-export async function kickColorClashPlayer(
+export const kickColorClashPlayer = (
   code: string,
   targetUid: string,
-) {
-  await callLifecycle(
-    'kickColorClashPlayer',
-    {
-      code,
-      targetUid,
-    },
-  );
-}
+) =>
+  kickPlayer(CONFIG, code, targetUid);
 
-// ==========================================
-// CONNECTION TRACKING
-// ==========================================
-
-export function startColorClashHeartbeat(
+export const startColorClashHeartbeat = (
   code: string,
-): () => void {
-  let stopped = false;
-  let running = false;
+) =>
+  startHeartbeat(CONFIG, code);
 
-  const send = async () => {
-    if (stopped || running) return;
-
-    if (
-      AppState.currentState === 'background'
-    ) {
-      return;
-    }
-
-    running = true;
-
-    try {
-      await sendColorClashHeartbeat(code);
-    } catch {
-      // Temporary connection failures
-      // are retried on the next heartbeat.
-    } finally {
-      running = false;
-    }
-  };
-
-  void send();
-
-  const interval = setInterval(
-    () => void send(),
-    HEARTBEAT_INTERVAL,
-  );
-
-  const subscription =
-    AppState.addEventListener(
-      'change',
-
-      state => {
-        if (state === 'active') {
-          void send();
-        }
-      },
-    );
-
-  return () => {
-    stopped = true;
-
-    clearInterval(interval);
-
-    subscription.remove();
-  };
-}
-
-// ==========================================
-// SUBSCRIBE TO PLAYER PRESENCE
-// ==========================================
-
-export function subscribeToColorClashPresence(
+export const subscribeToColorClashPresence = (
   code: string,
-
-  onUpdate: (
-    presence: PresenceMap,
-  ) => void,
-
-  onError?: (
-    message: string,
-  ) => void,
-): () => void {
-  return onSnapshot(
-    collection(
-      db,
-      'colorClashRooms',
-      code,
-      'presence',
-    ),
-
-    snapshot => {
-      const presence: PresenceMap = {};
-
-      snapshot.forEach(document => {
-        const data = document.data();
-
-        if (
-          typeof data.lastSeen === 'number'
-        ) {
-          presence[document.id] = {
-            uid: document.id,
-            lastSeen: data.lastSeen,
-          };
-        }
-      });
-
-      onUpdate(presence);
-    },
-
-    error => {
-      onError?.(error.message);
-    },
+  onUpdate: (presence: PresenceMap) => void,
+  onError?: (message: string) => void,
+) =>
+  subscribeToPresence(
+    CONFIG,
+    code,
+    onUpdate,
+    onError,
   );
-}
-
-// ==========================================
-// DETERMINE CONNECTION STATUS
-// ==========================================
-
-export function getConnectionStatus(
-  presence: PlayerPresence | undefined,
-  now = Date.now(),
-): ConnectionStatus {
-  if (!presence) {
-    return 'connecting';
-  }
-
-  if (
-    now - presence.lastSeen >
-    OFFLINE_THRESHOLD
-  ) {
-    return 'offline';
-  }
-
-  return 'online';
-}
-
-// ==========================================
-// REUSABLE REACT HOOK
-// ==========================================
 
 export function useColorClashPresence(
   code: string,
   enabled: boolean,
 ) {
-  const [presence, setPresence] =
-    useState<PresenceMap>({});
-
-  const [now, setNow] =
-    useState(Date.now());
-
-  const [error, setError] =
-    useState('');
-
-  useEffect(() => {
-    setPresence({});
-    setError('');
-
-    if (!code || !enabled) {
-      return;
-    }
-
-    const stopHeartbeat =
-      startColorClashHeartbeat(code);
-
-    const unsubscribe =
-      subscribeToColorClashPresence(
-        code,
-        setPresence,
-        setError,
-      );
-
-    const interval = setInterval(
-      () => {
-        setNow(Date.now());
-      },
-      5000,
-    );
-
-    return () => {
-      stopHeartbeat();
-      unsubscribe();
-      clearInterval(interval);
-    };
-  }, [code, enabled]);
-
-  const statusOf = (
-    uid: string,
-  ): ConnectionStatus =>
-    getConnectionStatus(
-      presence[uid],
-      now,
-    );
-
-  return {
-    presence,
-    statusOf,
-    error,
-  };
+  return useMultiplayerPresence(
+    CONFIG,
+    code,
+    enabled,
+  );
 }
-

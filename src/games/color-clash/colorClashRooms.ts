@@ -1,23 +1,30 @@
-
-import {
-  signInAnonymously,
-  signOut,
-  type User,
-} from 'firebase/auth';
-
 import {
   doc,
   onSnapshot,
-  runTransaction,
 } from 'firebase/firestore';
 
-import { httpsCallable } from 'firebase/functions';
+import { db } from '../../config/firebase';
 
 import {
-  auth,
-  db,
-  functions,
-} from '../../config/firebase';
+  createRoom,
+  joinRoom,
+  subscribeToRoom,
+  validateCode,
+} from '../../multiplayer/rooms';
+
+import {
+  callServer,
+} from '../../multiplayer/api';
+
+import type {
+  MultiplayerRoom,
+  RoomConfig,
+} from '../../multiplayer/types';
+
+export {
+  ensureGuest,
+  getMatchUser,
+} from '../../multiplayer/auth';
 
 // ==========================================
 // CONFIGURATION
@@ -27,8 +34,13 @@ export const MAX_COLOR_CLASH_PLAYERS = 20;
 export const ENGINE_VERSION = 5;
 export const TURN_DURATION_MS = 20000;
 
+const CONFIG: RoomConfig = {
+  collection: 'colorClashRooms',
+  maxPlayers: MAX_COLOR_CLASH_PLAYERS,
+};
+
 // ==========================================
-// TYPES
+// GAME-SPECIFIC TYPES
 // ==========================================
 
 export type ColorClashColor =
@@ -71,54 +83,49 @@ export type GameEvent = {
   count?: number;
 };
 
-export type ColorClashRoom = {
-  hostId: string;
+export type ColorClashRoom =
+  MultiplayerRoom & {
+    playerOrder?: string[];
+    seatOrder?: string[];
 
-  status: 'lobby' | 'playing' | 'finished';
+    departedPlayers?: Record<
+      string,
+      DepartedPlayer
+    >;
 
-  players: Record<string, string>;
+    currentPlayerId?: string | null;
 
-  playerOrder?: string[];
-  seatOrder?: string[];
+    direction?: number;
+    topCard?: ColorClashCard;
 
-  departedPlayers?: Record<
-    string,
-    DepartedPlayer
-  >;
+    activeColor?: string;
 
-  currentPlayerId?: string | null;
+    cardCounts?: Record<string, number>;
+    handRevisions?: Record<string, number>;
 
-  direction?: number;
-  topCard?: ColorClashCard;
+    revision?: number;
+    engineVersion?: number;
+    matchNumber?: number;
 
-  activeColor?: string;
+    winnerId?: string | null;
 
-  cardCounts?: Record<string, number>;
-  handRevisions?: Record<string, number>;
+    phase?: 'normal' | 'drawn' | 'response';
 
-  revision?: number;
-  engineVersion?: number;
-  matchNumber?: number;
+    pending?: {
+      kind: 'draw2' | 'wild4';
+      amount: number;
+    } | null;
 
-  winnerId?: string | null;
+    unoWindows?: Record<string, UnoWindow>;
+    unoCalled?: Record<string, boolean>;
 
-  phase?: 'normal' | 'drawn' | 'response';
+    turnDeadline?: number;
 
-  pending?: {
-    kind: 'draw2' | 'wild4';
-    amount: number;
-  } | null;
+    lastAction?: string;
+    lastPlayedBy?: string | null;
 
-  unoWindows?: Record<string, UnoWindow>;
-  unoCalled?: Record<string, boolean>;
-
-  turnDeadline?: number;
-
-  lastAction?: string;
-  lastPlayedBy?: string | null;
-
-  lastEvent?: GameEvent;
-};
+    lastEvent?: GameEvent;
+  };
 
 export type PrivateHand = {
   cards: ColorClashCard[];
@@ -128,252 +135,23 @@ export type PrivateHand = {
 };
 
 // ==========================================
-// AUTHENTICATION
+// SHARED ROOM OPERATIONS
 // ==========================================
 
-let guestPromise: Promise<User> | null = null;
-
-export async function ensureGuest(): Promise<User> {
-  if (guestPromise) {
-    return guestPromise;
-  }
-
-  guestPromise = (async () => {
-    await auth.authStateReady();
-
-    const user = auth.currentUser;
-
-    if (user) {
-      try {
-        await user.getIdToken(true);
-
-        return user;
-      } catch (error) {
-        const code =
-          (error as { code?: string }).code;
-
-        const invalid = [
-          'auth/invalid-refresh-token',
-          'auth/user-token-expired',
-          'auth/user-not-found',
-          'auth/invalid-user-token',
-          'auth/user-disabled',
-        ].includes(code ?? '');
-
-        if (!invalid) {
-          throw error;
-        }
-
-        await signOut(auth);
-      }
-    }
-
-    const result =
-      await signInAnonymously(auth);
-
-    await result.user.getIdToken();
-
-    return result.user;
-  })();
-
-  try {
-    return await guestPromise;
-  } finally {
-    guestPromise = null;
-  }
-}
-
-export async function getMatchUser(): Promise<User> {
-  await auth.authStateReady();
-
-  const user = auth.currentUser;
-
-  if (!user) {
-    throw new Error(
-      'Guest session lost. Return to the room menu.',
-    );
-  }
-
-  await user.getIdToken();
-
-  return user;
-}
-
-// ==========================================
-// VALIDATION
-// ==========================================
-
-function validateCode(value: string) {
-  const code = value.trim().toUpperCase();
-
-  if (!/^[A-HJ-NP-Z2-9]{8}$/.test(code)) {
-    throw new Error(
-      'Enter a valid 8-character room code.',
-    );
-  }
-
-  return code;
-}
-
-function validateName(value: string) {
-  const name = value.trim();
-
-  if (!name || name.length > 24) {
-    throw new Error(
-      'Enter a name of 1–24 characters.',
-    );
-  }
-
-  return name;
-}
-
-function roomRef(code: string) {
-  return doc(
-    db,
-    'colorClashRooms',
-    validateCode(code),
-  );
-}
-
-// ==========================================
-// ROOM CODE
-// ==========================================
-
-function generateCode() {
-  const alphabet =
-    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
-  return Array.from(
-    { length: 8 },
-
-    () =>
-      alphabet[
-        Math.floor(
-          Math.random() * alphabet.length,
-        )
-      ],
-  ).join('');
-}
-
-// ==========================================
-// CREATE ROOM
-// ==========================================
-
-export async function createColorClashRoom(
+export const createColorClashRoom = (
   playerName: string,
-): Promise<string> {
-  const name =
-    validateName(playerName);
+) =>
+  createRoom(CONFIG, playerName);
 
-  const user =
-    await ensureGuest();
-
-  for (let i = 0; i < 5; i++) {
-    const code = generateCode();
-
-    const ref = roomRef(code);
-
-    const created = await runTransaction(
-      db,
-
-      async tx => {
-        if ((await tx.get(ref)).exists()) {
-          return false;
-        }
-
-        tx.set(ref, {
-          hostId: user.uid,
-          status: 'lobby',
-
-          players: {
-            [user.uid]: name,
-          },
-        });
-
-        return true;
-      },
-    );
-
-    if (created) {
-      return code;
-    }
-  }
-
-  throw new Error(
-    'Could not generate room code.',
-  );
-}
-
-// ==========================================
-// JOIN OR RECONNECT
-// ==========================================
-
-export async function joinColorClashRoom(
+export const joinColorClashRoom = (
   codeInput: string,
   playerName: string,
-): Promise<string> {
-  const code =
-    validateCode(codeInput);
-
-  const name =
-    validateName(playerName);
-
-  const user =
-    await ensureGuest();
-
-  await runTransaction(db, async tx => {
-    const ref = roomRef(code);
-
-    const snap = await tx.get(ref);
-
-    if (!snap.exists()) {
-      throw new Error('Room not found.');
-    }
-
-    const room =
-      snap.data() as ColorClashRoom;
-
-    // Reconnect existing room members.
-
-    if (
-      Object.prototype.hasOwnProperty.call(
-        room.players,
-        user.uid,
-      )
-    ) {
-      return;
-    }
-
-    // Departed players cannot rejoin
-    // a match after it has started.
-
-    if (room.status !== 'lobby') {
-      throw new Error(
-        'This match has already started.',
-      );
-    }
-
-    if (
-      Object.keys(room.players).length >=
-      MAX_COLOR_CLASH_PLAYERS
-    ) {
-      throw new Error('Room is full.');
-    }
-
-    tx.update(ref, {
-      players: {
-        ...room.players,
-        [user.uid]: name,
-      },
-    });
-  });
-
-  return code;
-}
-
-// ==========================================
-// PUBLIC ROOM SUBSCRIPTION
-// ==========================================
+) =>
+  joinRoom(
+    CONFIG,
+    codeInput,
+    playerName,
+  );
 
 export function subscribeToColorClashRoom(
   code: string,
@@ -384,23 +162,16 @@ export function subscribeToColorClashRoom(
 
   onError: (message: string) => void,
 ) {
-  return onSnapshot(
-    roomRef(code),
-
-    snap =>
-      onUpdate(
-        snap.exists()
-          ? (snap.data() as ColorClashRoom)
-          : null,
-      ),
-
-    error =>
-      onError(error.message),
+  return subscribeToRoom<ColorClashRoom>(
+    CONFIG,
+    code,
+    onUpdate,
+    onError,
   );
 }
 
 // ==========================================
-// PRIVATE HAND SUBSCRIPTION
+// PRIVATE CARD HAND SUBSCRIPTION
 // ==========================================
 
 export function subscribeToMyColorClashHand(
@@ -419,7 +190,7 @@ export function subscribeToMyColorClashHand(
   return onSnapshot(
     doc(
       db,
-      'colorClashRooms',
+      CONFIG.collection,
       validateCode(code),
       'hands',
       uid,
@@ -428,7 +199,6 @@ export function subscribeToMyColorClashHand(
     snap => {
       if (!snap.exists()) {
         onUpdate([], -1, null, -1);
-
         return;
       }
 
@@ -447,13 +217,12 @@ export function subscribeToMyColorClashHand(
       );
     },
 
-    error =>
-      onError(error.message),
+    error => onError(error.message),
   );
 }
 
 // ==========================================
-// SERVER REQUEST
+// GAME ACTION RESPONSE
 // ==========================================
 
 type CallResult = {
@@ -463,31 +232,14 @@ type CallResult = {
   unoWindow?: UnoWindow | null;
 };
 
-async function call(
+function call(
   name: string,
   data: Record<string, unknown>,
 ): Promise<CallResult> {
-  await getMatchUser();
-
-  const callable = httpsCallable<
-    Record<string, unknown>,
-    CallResult
-  >(
-    functions,
+  return callServer<CallResult>(
     name,
-    {
-      timeout: 15000,
-    },
+    data,
   );
-
-  const result =
-    await callable(data);
-
-  if (!result.data.success) {
-    throw new Error('Action failed.');
-  }
-
-  return result.data;
 }
 
 // ==========================================
@@ -601,4 +353,3 @@ export const rematchColorClashGame = (
     code: validateCode(code),
     revision,
   });
-
