@@ -19,28 +19,43 @@ import {
   View,
 } from 'react-native';
 
-import {
-  createColorClashRoom,
-  ensureGuest,
-  getMatchUser,
-  joinColorClashRoom,
-  MAX_COLOR_CLASH_PLAYERS,
-  startColorClashGame,
-  subscribeToColorClashRoom,
-  type ColorClashRoom,
-} from './colorClashRooms';
+import { ensureGuest, getMatchUser } from './auth';
 
 import {
-  kickColorClashPlayer,
-  leaveColorClashRoom,
-  useColorClashPresence,
-} from './colorClashPresence';
+  createRoom as createMultiplayerRoom,
+  joinRoom as joinMultiplayerRoom,
+  subscribeToRoom,
+} from './rooms';
 
 import {
-  clearColorClashSession,
-  getColorClashSession,
-  saveColorClashSession,
-} from './colorClashSession';
+  kickPlayer as kickMultiplayerPlayer,
+  leaveRoom as leaveMultiplayerRoom,
+  useMultiplayerPresence,
+} from './presence';
+
+import {
+  clearSession,
+  getSession,
+  saveSession,
+} from './session';
+
+import type {
+  MultiplayerRoom,
+  RoomConfig,
+  PresenceConfig,
+} from './types';
+
+export type MultiplayerLobbyConfig = {
+  gameId: string;
+  title: string;
+  icon: string;
+  description: string;
+  minPlayers: number;
+  room: RoomConfig;
+  presence: PresenceConfig;
+  startMatch: (code: string) => Promise<unknown>;
+};
+
 
 // ==========================================
 // TYPES
@@ -100,7 +115,7 @@ const STATUS_COLORS = {
 // MAIN LOBBY SCREEN
 // ==========================================
 
-export default function ColorClashScreen() {
+export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyConfig }) {
   const router = useRouter();
 
   const [phase, setPhase] =
@@ -119,7 +134,7 @@ export default function ColorClashScreen() {
     useState('');
 
   const [room, setRoom] =
-    useState<ColorClashRoom | null>(null);
+    useState<MultiplayerRoom | null>(null);
 
   const [initializing, setInitializing] =
     useState(true);
@@ -160,7 +175,7 @@ export default function ColorClashScreen() {
         setMyUid(user.uid);
 
         const session =
-          await getColorClashSession();
+          await getSession(config.gameId);
 
         if (!alive) return;
 
@@ -179,7 +194,7 @@ export default function ColorClashScreen() {
           // An old session must not be
           // used with a different identity.
 
-          await clearColorClashSession();
+          await clearSession(config.gameId);
         }
       } catch (err) {
         if (!alive) return;
@@ -220,7 +235,7 @@ export default function ColorClashScreen() {
 
     navigating.current = false;
 
-    void clearColorClashSession()
+    void clearSession(config.gameId)
       .catch(() => {});
   };
 
@@ -238,7 +253,7 @@ export default function ColorClashScreen() {
     navigating.current = false;
 
     const unsubscribe =
-      subscribeToColorClashRoom(
+      subscribeToRoom(config.room,
         roomCode,
 
         updatedRoom => {
@@ -303,7 +318,7 @@ export default function ColorClashScreen() {
   const {
     statusOf,
     error: presenceError,
-  } = useColorClashPresence(
+  } = useMultiplayerPresence(config.presence,
     roomCode,
 
     member &&
@@ -336,7 +351,7 @@ export default function ColorClashScreen() {
     router.replace({
       pathname: '/multiplayer/[game]/match',
       params: {
-        game: 'color-clash',
+        game: config.gameId,
         code:  roomCode,
       },
     });
@@ -393,7 +408,7 @@ export default function ColorClashScreen() {
     // not an independently generated player ID.
 
     try {
-      await saveColorClashSession(
+      await saveSession(config.gameId,
         code,
         uid,
         playerName,
@@ -420,7 +435,7 @@ export default function ColorClashScreen() {
   const createRoom = () =>
     run(async () => {
       const code =
-        await createColorClashRoom(name);
+        await createMultiplayerRoom(config.room, name);
 
       const user =
         await getMatchUser();
@@ -439,7 +454,7 @@ export default function ColorClashScreen() {
   const joinRoom = () =>
     run(async () => {
       const code =
-        await joinColorClashRoom(
+        await joinMultiplayerRoom(config.room,
           codeInput,
           name,
         );
@@ -462,7 +477,7 @@ export default function ColorClashScreen() {
     run(async () => {
       if (!roomCode) return;
 
-      await startColorClashGame(roomCode);
+      await config.startMatch(roomCode);
     });
 
   // ========================================
@@ -482,7 +497,7 @@ export default function ColorClashScreen() {
       leaving.current = true;
 
       try {
-        await leaveColorClashRoom(
+        await leaveMultiplayerRoom(config.presence,
           roomCode,
         );
 
@@ -515,7 +530,7 @@ export default function ColorClashScreen() {
     run(async () => {
       if (!roomCode) return;
 
-      await kickColorClashPlayer(
+      await kickMultiplayerPlayer(config.presence,
         roomCode,
         targetUid,
       );
@@ -584,9 +599,9 @@ export default function ColorClashScreen() {
   const canStart =
     isHost &&
     room?.status === 'lobby' &&
-    playerCount >= 2 &&
+    playerCount >= config.minPlayers &&
     playerCount <=
-      MAX_COLOR_CLASH_PLAYERS;
+      config.room.maxPlayers;
 
   // ========================================
   // INITIAL LOADING SCREEN
@@ -596,7 +611,7 @@ export default function ColorClashScreen() {
     return (
       <View style={s.loadingScreen}>
         <Text style={s.logo}>
-          🎴 Color Clash
+          {config.icon} {config.title}
         </Text>
 
         <ActivityIndicator
@@ -637,11 +652,11 @@ export default function ColorClashScreen() {
       </TouchableOpacity>
 
       <Text style={s.logo}>
-        🎴 Color Clash
+        {config.icon} {config.title}
       </Text>
 
       <Text style={s.subtitle}>
-        A colorful card battle with friends.
+        {config.description}
       </Text>
 
       {/* HOME SCREEN */}
@@ -753,7 +768,7 @@ export default function ColorClashScreen() {
           </TouchableOpacity>
 
           <Text style={s.smallMuted}>
-            Supports 2–20 players
+            Supports {config.minPlayers}–{config.room.maxPlayers} players
           </Text>
         </View>
       )}
@@ -803,7 +818,7 @@ export default function ColorClashScreen() {
 
             <Text style={s.muted}>
               {playerCount}/
-              {MAX_COLOR_CLASH_PLAYERS}
+              {config.room.maxPlayers}
               {' '}players
             </Text>
           </View>
@@ -977,15 +992,15 @@ export default function ColorClashScreen() {
                 </Text>
 
                 <Text style={s.muted}>
-                  {playerCount < 2
+                  {playerCount < config.minPlayers
 
-                    ? 'Waiting for another player to join.'
+                    ? 'Waiting for more players to join.'
 
                     : 'Start the match whenever everyone is ready.'}
                 </Text>
 
                 {onlineCount < playerCount &&
-                  playerCount >= 2 && (
+                  playerCount >= config.minPlayers && (
                     <Text style={s.warning}>
                       Some players may not be connected.
                     </Text>
@@ -1155,7 +1170,7 @@ export default function ColorClashScreen() {
       {/* FOOTER */}
 
       <Text style={s.footer}>
-        GameDen · Color Clash V6
+        GameDen · {config.title}
       </Text>
     </ScrollView>
   );
@@ -1508,5 +1523,6 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
 });
+
 
 

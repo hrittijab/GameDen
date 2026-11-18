@@ -1,10 +1,27 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { View, Text, Button } from 'react-native';
+import {
+  useLocalSearchParams,
+  useRouter,
+} from 'expo-router';
 
-import ColorClashLobby from '../../../games/color-clash/Lobby';
+import {
+  View,
+  Text,
+  Button,
+} from 'react-native';
 
-const LOBBIES = {
-  'color-clash': ColorClashLobby,
+import MultiplayerLobby, {
+  type MultiplayerLobbyConfig,
+} from '../../../multiplayer/Lobby';
+
+import {
+  COLOR_CLASH_CONFIG,
+} from '../../../games/color-clash/config';
+
+const GAMES: Record<
+  string,
+  MultiplayerLobbyConfig
+> = {
+  'color-clash': COLOR_CLASH_CONFIG,
 };
 
 export default function MultiplayerRoute() {
@@ -14,13 +31,16 @@ export default function MultiplayerRoute() {
     game?: string;
   }>();
 
-  const Lobby =
+  const config =
     typeof game === 'string' &&
-    Object.prototype.hasOwnProperty.call(LOBBIES, game)
-      ? LOBBIES[game as keyof typeof LOBBIES]
+    Object.prototype.hasOwnProperty.call(
+      GAMES,
+      game,
+    )
+      ? GAMES[game]
       : null;
 
-  if (!Lobby) {
+  if (!config) {
     return (
       <View style={{
         flex: 1,
@@ -41,5 +61,10 @@ export default function MultiplayerRoute() {
     );
   }
 
-  return <Lobby key={game} />;
+  return (
+    <MultiplayerLobby
+      key={config.gameId}
+      config={config}
+    />
+  );
 }
