@@ -12,10 +12,12 @@ import {
     useState,
 } from 'react';
 
+
 import {
     ActivityIndicator,
     Animated,
     Easing,
+    Modal,
     Platform,
     ScrollView,
     StyleSheet,
@@ -23,6 +25,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+
 
 import {
     autoColorClashGameTurn,
@@ -41,15 +44,26 @@ import {
     type ColorClashColor,
     type ColorClashRoom,
     type PrivateHand,
-    type UnoWindow
+    type UnoWindow,
 } from '../../services/colorClashRooms';
+
+import {
+    leaveColorClashRoom,
+    useColorClashPresence,
+    type ConnectionStatus,
+} from '../../services/colorClashPresence';
+
+import {
+    clearColorClashSession,
+    saveColorClashSession,
+} from '../../services/colorClashSession';
 
 import {
     useColorClashSounds,
 } from '../../services/colorClashSounds';
 
 // ==========================================
-// APPEARANCE
+// CONFIGURATION
 // ==========================================
 
 const NATIVE_ANIMATION =
@@ -87,6 +101,12 @@ const AVATAR_COLORS = [
   '#B7D5FF',
 ];
 
+const STATUS_COLORS = {
+  online: '#43D69C',
+  offline: '#FF7488',
+  connecting: '#FFD071',
+};
+
 const EMPTY_HAND: PrivateHand = {
   cards: [],
   revision: -1,
@@ -105,7 +125,7 @@ function label(value: string) {
 }
 
 // ==========================================
-// PLAYING CARD COMPONENT
+// PLAYING CARD
 // ==========================================
 
 const Card = memo(function Card({
@@ -135,9 +155,7 @@ const Card = memo(function Card({
       </View>
 
       <Text style={s.cardColor}>
-        {card.color === 'wild'
-          ? 'WILD'
-          : card.color.toUpperCase()}
+        {card.color.toUpperCase()}
       </Text>
     </View>
   );
@@ -150,14 +168,19 @@ const Card = memo(function Card({
 const CardBack = memo(function CardBack() {
   return (
     <View style={s.cardBack}>
-      <Text style={s.backStar}>✦</Text>
-      <Text style={s.backLabel}>CLASH</Text>
+      <Text style={s.backStar}>
+        ✦
+      </Text>
+
+      <Text style={s.backLabel}>
+        CLASH
+      </Text>
     </View>
   );
 });
 
 // ==========================================
-// DEAL / NEW CARD ENTRY ANIMATION
+// ANIMATED HAND CARD
 // ==========================================
 
 const HandCard = memo(function HandCard({
@@ -177,28 +200,37 @@ const HandCard = memo(function HandCard({
     new Animated.Value(0),
   ).current;
 
-  const pressScale = useRef(
+  const scale = useRef(
     new Animated.Value(1),
   ).current;
 
   useEffect(() => {
-    const animation = Animated.timing(entry, {
-      toValue: 1,
-      duration: 180,
-      delay,
-      useNativeDriver: NATIVE_ANIMATION,
-    });
+    const animation = Animated.timing(
+      entry,
+      {
+        toValue: 1,
+        duration: 180,
+        delay,
+
+        useNativeDriver:
+          NATIVE_ANIMATION,
+      },
+    );
 
     animation.start();
 
     return () => animation.stop();
-  }, [entry, delay]);
+
+    // Entry animation runs once per card.
+  }, [entry]);
 
   const animatePress = (value: number) => {
-    Animated.timing(pressScale, {
+    Animated.timing(scale, {
       toValue: value,
       duration: 80,
-      useNativeDriver: NATIVE_ANIMATION,
+
+      useNativeDriver:
+        NATIVE_ANIMATION,
     }).start();
   };
 
@@ -215,19 +247,31 @@ const HandCard = memo(function HandCard({
             }),
           },
 
-          { scale: pressScale },
+          { scale },
         ],
       }}
     >
       <TouchableOpacity
+        accessibilityRole="button"
+
         accessibilityLabel={
           `${card.color} ${label(card.value)}`
         }
+
         disabled={!playable || sending}
+
         activeOpacity={0.8}
-        onPressIn={() => animatePress(0.92)}
-        onPressOut={() => animatePress(1)}
+
+        onPressIn={() =>
+          animatePress(0.92)
+        }
+
+        onPressOut={() =>
+          animatePress(1)
+        }
+
         onPress={onPress}
+
         style={[
           s.cardWrap,
 
@@ -246,20 +290,17 @@ const HandCard = memo(function HandCard({
 
 // ==========================================
 // COUNTDOWN
-// Isolated from the main screen so the entire
-// hand does not rerender every 200ms.
 // ==========================================
 
 const Countdown = memo(function Countdown({
   deadline,
   duration = TURN_DURATION_MS,
-  showBar = true,
 }: {
   deadline: number;
   duration?: number;
-  showBar?: boolean;
 }) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] =
+    useState(Date.now());
 
   useEffect(() => {
     setNow(Date.now());
@@ -269,7 +310,8 @@ const Countdown = memo(function Countdown({
       200,
     );
 
-    return () => clearInterval(interval);
+    return () =>
+      clearInterval(interval);
   }, [deadline]);
 
   const remaining = Math.max(
@@ -277,9 +319,8 @@ const Countdown = memo(function Countdown({
     deadline - now,
   );
 
-  const seconds = Math.ceil(
-    remaining / 1000,
-  );
+  const seconds =
+    Math.ceil(remaining / 1000);
 
   const progress = Math.min(
     100,
@@ -291,44 +332,46 @@ const Countdown = memo(function Countdown({
       <Text
         style={[
           s.timerText,
-          seconds <= 5 && s.timerDanger,
+
+          seconds <= 5 &&
+            s.timerDanger,
         ]}
       >
         {seconds}s
       </Text>
 
-      {showBar && (
-        <View style={s.timerTrack}>
-          <View
-            style={[
-              s.timerFill,
+      <View style={s.timerTrack}>
+        <View
+          style={[
+            s.timerFill,
 
-              {
-                width: `${progress}%`,
+            {
+              width: `${progress}%`,
 
-                backgroundColor:
-                  seconds <= 5
-                    ? '#FF7187'
-                    : '#A5E1EB',
-              },
-            ]}
-          />
-        </View>
-      )}
+              backgroundColor:
+                seconds <= 5
+                  ? '#FF7187'
+                  : '#A5E1EB',
+            },
+          ]}
+        />
+      </View>
     </View>
   );
 });
 
 // ==========================================
-// PLAYER AVATAR
+// AVATAR
 // ==========================================
 
 const Avatar = memo(function Avatar({
   index,
-  active,
+  active = false,
+  connection,
 }: {
   index: number;
-  active: boolean;
+  active?: boolean;
+  connection?: ConnectionStatus;
 }) {
   const i = Math.max(0, index);
 
@@ -350,6 +393,19 @@ const Avatar = memo(function Avatar({
       <Text style={s.avatarEmoji}>
         {AVATARS[i % AVATARS.length]}
       </Text>
+
+      {connection && (
+        <View
+          style={[
+            s.avatarStatus,
+
+            {
+              backgroundColor:
+                STATUS_COLORS[connection],
+            },
+          ]}
+        />
+      )}
     </View>
   );
 });
@@ -364,70 +420,117 @@ const PlayerSeat = memo(function PlayerSeat({
   index,
   active,
   uno,
+  host,
+  departure,
+  connection,
 }: {
   name: string;
   count: number;
   index: number;
   active: boolean;
   uno: boolean;
+  host: boolean;
+  departure?: 'QUIT' | 'LEFT';
+  connection: ConnectionStatus;
 }) {
   return (
     <View
       style={[
         s.seat,
-        active && s.activeSeat,
+
+        active &&
+          !departure &&
+          s.activeSeat,
+
+        !!departure &&
+          s.departedSeat,
       ]}
     >
       <Avatar
         index={index}
-        active={active}
+        active={active && !departure}
+
+        connection={
+          departure
+            ? undefined
+            : connection
+        }
       />
 
       <Text
         style={s.seatName}
-        numberOfLines={1}
+        numberOfLines={2}
       >
         {name}
+
+        {host ? ' 👑' : ''}
       </Text>
 
-      <Text style={s.muted}>
-        {count} cards
-      </Text>
-
-      <View style={s.miniCards}>
-        {Array.from(
-          { length: Math.min(count, 5) },
-
-          (_, i) => (
-            <View
-              key={i}
-              style={s.miniCard}
-            >
-              <Text style={s.miniStar}>
-                ✦
-              </Text>
-            </View>
-          ),
-        )}
-      </View>
-
-      {active && (
-        <Text style={s.turnSmall}>
-          ● PLAYING
+      {departure ? (
+        <Text style={s.quitLabel}>
+          {departure}
         </Text>
-      )}
+      ) : (
+        <>
+          <Text style={s.muted}>
+            {count} cards
+          </Text>
 
-      {uno && (
-        <Text style={s.unoSmall}>
-          UNO!
-        </Text>
+          <Text
+            style={[
+              s.connectionText,
+
+              {
+                color:
+                  STATUS_COLORS[connection],
+              },
+            ]}
+          >
+            {connection === 'online'
+              ? '● Online'
+              : connection === 'offline'
+                ? '● Offline'
+                : '● Connecting'}
+          </Text>
+
+          <View style={s.miniCards}>
+            {Array.from(
+              {
+                length: Math.min(count, 5),
+              },
+
+              (_, index) => (
+                <View
+                  key={index}
+                  style={s.miniCard}
+                >
+                  <Text style={s.miniStar}>
+                    ✦
+                  </Text>
+                </View>
+              ),
+            )}
+          </View>
+
+          {active && (
+            <Text style={s.turnSmall}>
+              ● PLAYING
+            </Text>
+          )}
+
+          {uno && (
+            <Text style={s.unoSmall}>
+              UNO!
+            </Text>
+          )}
+        </>
       )}
     </View>
   );
 });
 
 // ==========================================
-// FLYING CARD ANIMATION
+// FLYING CARD
 // ==========================================
 
 type Point = {
@@ -447,19 +550,26 @@ const FlyingCard = memo(function FlyingCard({
   onFinish,
 }: {
   flight: Flight;
-  onFinish: () => void;
+  onFinish: (id: string) => void;
 }) {
   const progress = useRef(
     new Animated.Value(0),
   ).current;
 
+  const finishRef = useRef(onFinish);
+
+  finishRef.current = onFinish;
+
   useEffect(() => {
     const animation = Animated.timing(
       progress,
+
       {
         toValue: 1,
         duration: 260,
-        easing: Easing.out(Easing.cubic),
+
+        easing:
+          Easing.out(Easing.cubic),
 
         useNativeDriver:
           NATIVE_ANIMATION,
@@ -467,15 +577,18 @@ const FlyingCard = memo(function FlyingCard({
     );
 
     animation.start(({ finished }) => {
-      if (finished) onFinish();
+      if (finished) {
+        finishRef.current(flight.id);
+      }
     });
 
     return () => animation.stop();
-  }, [progress, onFinish]);
+  }, [progress, flight.id]);
 
   return (
     <Animated.View
       pointerEvents="none"
+
       style={[
         s.flyingCard,
 
@@ -490,6 +603,7 @@ const FlyingCard = memo(function FlyingCard({
               translateX:
                 progress.interpolate({
                   inputRange: [0, 1],
+
                   outputRange: [
                     flight.from.x - 30,
                     flight.to.x - 30,
@@ -501,6 +615,7 @@ const FlyingCard = memo(function FlyingCard({
               translateY:
                 progress.interpolate({
                   inputRange: [0, 1],
+
                   outputRange: [
                     flight.from.y - 40,
                     flight.to.y - 40,
@@ -512,6 +627,7 @@ const FlyingCard = memo(function FlyingCard({
               rotate:
                 progress.interpolate({
                   inputRange: [0, 1],
+
                   outputRange: [
                     '-14deg',
                     '0deg',
@@ -523,6 +639,7 @@ const FlyingCard = memo(function FlyingCard({
               scale:
                 progress.interpolate({
                   inputRange: [0, 1],
+
                   outputRange: [0.7, 1],
                 }),
             },
@@ -530,11 +647,9 @@ const FlyingCard = memo(function FlyingCard({
         },
       ]}
     >
-      {flight.card ? (
-        <Card card={flight.card} />
-      ) : (
-        <CardBack />
-      )}
+      {flight.card
+        ? <Card card={flight.card} />
+        : <CardBack />}
     </Animated.View>
   );
 });
@@ -551,10 +666,13 @@ function VictoryConfetti() {
   useEffect(() => {
     const animation = Animated.timing(
       progress,
+
       {
         toValue: 1,
         duration: 2400,
-        easing: Easing.out(Easing.quad),
+
+        easing:
+          Easing.out(Easing.quad),
 
         useNativeDriver:
           NATIVE_ANIMATION,
@@ -577,6 +695,7 @@ function VictoryConfetti() {
         (_, index) => (
           <Animated.View
             key={index}
+
             style={[
               s.confettiPiece,
 
@@ -604,22 +723,8 @@ function VictoryConfetti() {
                         outputRange: [
                           -30 - index * 9,
 
-                          320 +
+                          360 +
                             (index % 6) * 25,
-                        ],
-                      }),
-                  },
-
-                  {
-                    translateX:
-                      progress.interpolate({
-                        inputRange: [0, 1],
-
-                        outputRange: [
-                          0,
-                          index % 2
-                            ? -35
-                            : 35,
                         ],
                       }),
                   },
@@ -654,7 +759,9 @@ export default function ColorClashGame() {
   const router = useRouter();
 
   const params =
-    useLocalSearchParams<{ code?: string }>();
+    useLocalSearchParams<{
+      code?: string;
+    }>();
 
   const code =
     typeof params.code === 'string' &&
@@ -662,7 +769,12 @@ export default function ColorClashGame() {
       ? params.code
       : '';
 
-  const [uid, setUid] = useState('');
+  // ========================================
+  // STATE
+  // ========================================
+
+  const [uid, setUid] =
+    useState('');
 
   const [room, setRoom] =
     useState<ColorClashRoom | null>(null);
@@ -673,7 +785,8 @@ export default function ColorClashGame() {
   const [wild, setWild] =
     useState<ColorClashCard | null>(null);
 
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] =
+    useState(false);
 
   const [waitingFor, setWaitingFor] =
     useState<number | null>(null);
@@ -686,6 +799,12 @@ export default function ColorClashGame() {
 
   const [soundEnabled, setSoundEnabled] =
     useState(true);
+
+  const [confirmQuit, setConfirmQuit] =
+    useState(false);
+
+  const [quitting, setQuitting] =
+    useState(false);
 
   const [confirmedWindow, setConfirmedWindow] =
     useState<{
@@ -709,31 +828,58 @@ export default function ColorClashGame() {
       height: 300,
     });
 
+  // ========================================
+  // LOCKS AND REFERENCES
+  // ========================================
+
   const actionLock = useRef(false);
   const unoLock = useRef(false);
   const automaticLock = useRef(false);
+  const quitLock = useRef(false);
 
-  const lastAutomaticAttempt = useRef(0);
-  const lastEventId = useRef('');
+  const lastAutomaticAttempt =
+    useRef(0);
 
-  const roomRef = useRef(room);
+  const lastEventId =
+    useRef('');
+
+  const roomRef =
+    useRef(room);
+
   roomRef.current = room;
 
-  const latestHand = useRef(handState);
+  const latestHand =
+    useRef(handState);
+
   latestHand.current = handState;
 
   const { sound, feedback } =
     useColorClashSounds(soundEnabled);
 
-  const hand = handState.cards;
+  const hand =
+    handState.cards;
 
-  const rev = room?.revision ?? -1;
-
-  const member =
-    !!uid && !!room?.players[uid];
+  const rev =
+    room?.revision ?? -1;
 
   const matchNumber =
     room?.matchNumber ?? -1;
+
+  const member =
+    !!uid &&
+    !!room &&
+    Object.prototype.hasOwnProperty.call(
+      room.players,
+      uid,
+    );
+
+  const { statusOf } =
+    useColorClashPresence(
+      code,
+
+      member &&
+        room?.status !== 'lobby',
+    );
 
   // ========================================
   // AUTHENTICATION
@@ -744,11 +890,13 @@ export default function ColorClashGame() {
 
     getMatchUser()
       .then(user => {
-        if (alive) setUid(user.uid);
-      })
-      .catch(error => {
         if (alive) {
-          setError(error.message);
+          setUid(user.uid);
+        }
+      })
+      .catch(err => {
+        if (alive) {
+          setError(err.message);
         }
       });
 
@@ -758,11 +906,13 @@ export default function ColorClashGame() {
   }, []);
 
   // ========================================
-  // PUBLIC ROOM SUBSCRIPTION
+  // PUBLIC MATCH STATE
   // ========================================
 
   useEffect(() => {
-    if (!code || !uid) return;
+    if (!code || !uid) {
+      return;
+    }
 
     return subscribeToColorClashRoom(
       code,
@@ -780,11 +930,43 @@ export default function ColorClashGame() {
   }, [code, uid]);
 
   // ========================================
-  // PRIVATE HAND SUBSCRIPTION
+  // SAVE SESSION FOR RECONNECTION
+  // ========================================
+
+  const currentName =
+    uid ? room?.players[uid] : undefined;
+
+  useEffect(() => {
+    if (
+      code &&
+      uid &&
+      member &&
+      currentName &&
+      !quitLock.current
+    ) {
+      void saveColorClashSession(
+        code,
+        uid,
+        currentName,
+      ).catch(() => {});
+    }
+  }, [
+    code,
+    uid,
+    member,
+    currentName,
+  ]);
+
+  // ========================================
+  // PRIVATE HAND
   // ========================================
 
   useEffect(() => {
-    if (!code || !uid || !member) {
+    if (
+      !code ||
+      !uid ||
+      !member
+    ) {
       return;
     }
 
@@ -803,11 +985,16 @@ export default function ColorClashGame() {
           revision,
           drawnCardId,
 
-          matchNumber: handMatchNumber,
+          matchNumber:
+            handMatchNumber,
         });
       },
 
-      setError,
+      message => {
+        if (!quitLock.current) {
+          setError(message);
+        }
+      },
     );
   }, [code, uid, member]);
 
@@ -823,19 +1010,16 @@ export default function ColorClashGame() {
     setWaitingFor(null);
     setError('');
     setFlight(null);
+    setConfirmQuit(false);
   }, [matchNumber]);
 
   // ========================================
-  // CLEAR OLD WILD SELECTIONS
+  // RESET OLD WILD SELECTION
   // ========================================
 
   useEffect(() => {
     setWild(null);
   }, [rev]);
-
-  // ========================================
-  // WAIT FOR AUTHORITATIVE SERVER SNAPSHOT
-  // ========================================
 
   useEffect(() => {
     if (
@@ -848,7 +1032,7 @@ export default function ColorClashGame() {
   }, [rev, waitingFor]);
 
   // ========================================
-  // DERIVED MATCH STATE
+  // DERIVED GAME STATE
   // ========================================
 
   const myTurn =
@@ -858,17 +1042,24 @@ export default function ColorClashGame() {
 
   const ready =
     !!room &&
-    handState.matchNumber === matchNumber &&
+    handState.matchNumber ===
+      matchNumber &&
+
     handState.revision ===
       room.handRevisions?.[uid] &&
-    hand.length === room.cardCounts?.[uid];
+
+    hand.length ===
+      room.cardCounts?.[uid];
 
   const ownWindow =
     room?.unoWindows?.[uid] ??
     (
       confirmedWindow &&
-      confirmedWindow.matchNumber === matchNumber &&
+      confirmedWindow.matchNumber ===
+        matchNumber &&
+
       rev < confirmedWindow.revision
+
         ? confirmedWindow.window
         : null
     );
@@ -877,6 +1068,8 @@ export default function ColorClashGame() {
     !!myTurn &&
     ready &&
     !busy &&
+    !quitting &&
+    !confirmQuit &&
     waitingFor === null &&
     !ownWindow &&
     room?.engineVersion === ENGINE_VERSION;
@@ -884,18 +1077,17 @@ export default function ColorClashGame() {
   const penalty =
     room?.pending?.amount ?? 0;
 
-  const skip =
-    room?.pending?.kind === 'skip' ||
-    room?.pending?.kind === 'reverse';
-
   // ========================================
-  // CHECK PLAYABLE CARDS
+  // LEGAL CARDS
   // ========================================
 
   const legal = (
     card: ColorClashCard,
   ): boolean => {
-    if (!canAct || !room?.topCard) {
+    if (
+      !canAct ||
+      !room?.topCard
+    ) {
       return false;
     }
 
@@ -925,26 +1117,44 @@ export default function ColorClashGame() {
   };
 
   // ========================================
-  // PLAYER POSITIONS
+  // PLAYER SEATING
   // ========================================
 
-  const ids = room?.playerOrder ?? [];
+  const activeIds =
+    room?.playerOrder ?? [];
 
-  const myIndex = ids.indexOf(uid);
+  const ids =
+    room?.seatOrder ??
+    activeIds;
+
+  const myIndex =
+    ids.indexOf(uid);
 
   const others =
     myIndex >= 0
+
       ? [
           ...ids.slice(myIndex + 1),
           ...ids.slice(0, myIndex),
         ]
+
       : [];
+
+  const playerName = (
+    playerId: string,
+  ): string =>
+    room?.players[playerId] ??
+    room?.departedPlayers?.[playerId]?.name ??
+    'Player';
 
   function playerPoint(
     playerId: string,
   ): Point {
-    const width = arenaSize.width;
-    const height = arenaSize.height;
+    const width =
+      arenaSize.width;
+
+    const height =
+      arenaSize.height;
 
     if (playerId === uid) {
       return {
@@ -981,17 +1191,19 @@ export default function ColorClashGame() {
   // ========================================
 
   useEffect(() => {
-    const event = room?.lastEvent;
+    const gameEvent =
+      room?.lastEvent;
 
     if (
-      !event ||
+      !gameEvent ||
       !member ||
-      lastEventId.current === event.id
+      lastEventId.current === gameEvent.id
     ) {
       return;
     }
 
-    lastEventId.current = event.id;
+    lastEventId.current =
+      gameEvent.id;
 
     const discardPoint = {
       x: arenaSize.width * 0.56,
@@ -1003,44 +1215,56 @@ export default function ColorClashGame() {
       y: 100,
     };
 
-    if (event.kind === 'start') {
+    if (gameEvent.kind === 'start') {
       sound('deal');
+
       return;
     }
 
     if (
-      event.kind === 'play' &&
-      event.card
+      gameEvent.kind === 'play' &&
+      gameEvent.card
     ) {
       sound('play');
 
       setFlight({
-        id: event.id,
+        id: gameEvent.id,
 
-        from: playerPoint(event.uid),
+        from: playerPoint(gameEvent.uid),
+
         to: discardPoint,
 
-        card: event.card,
+        card: gameEvent.card,
       });
-    } else if (
-      event.kind === 'draw' ||
-      event.kind === 'penalty'
+    }
+
+    else if (
+      gameEvent.kind === 'draw' ||
+      gameEvent.kind === 'penalty'
     ) {
-      if ((event.count ?? 0) > 0) {
+      if ((gameEvent.count ?? 0) > 0) {
         sound('draw');
 
         setFlight({
-          id: event.id,
+          id: gameEvent.id,
+
           from: deckPoint,
 
-          to: playerPoint(event.uid),
+          to: playerPoint(gameEvent.uid),
         });
       }
-    } else if (event.kind === 'uno') {
-      if (event.uid !== uid) {
-        sound('uno');
-      }
-    } else if (event.kind === 'win') {
+    }
+
+    else if (
+      gameEvent.kind === 'uno' &&
+      gameEvent.uid !== uid
+    ) {
+      sound('uno');
+    }
+
+    else if (
+      gameEvent.kind === 'win'
+    ) {
       sound('win');
     }
   }, [
@@ -1053,7 +1277,7 @@ export default function ColorClashGame() {
   ]);
 
   // ========================================
-  // EXECUTE NORMAL MOVE
+  // NORMAL SERVER ACTION
   // ========================================
 
   type MoveResponse = {
@@ -1068,6 +1292,7 @@ export default function ColorClashGame() {
   ) => {
     if (
       actionLock.current ||
+      quitLock.current ||
       waitingFor !== null
     ) {
       return;
@@ -1076,11 +1301,16 @@ export default function ColorClashGame() {
     actionLock.current = true;
 
     setBusy(true);
-    setSendingCard(cardId ?? null);
+
+    setSendingCard(
+      cardId ?? null,
+    );
+
     setError('');
 
     try {
-      const result = await fn();
+      const result =
+        await fn();
 
       if (
         result.unoWindow &&
@@ -1100,22 +1330,25 @@ export default function ColorClashGame() {
         result.revision !== undefined &&
         result.revision > latestRevision
       ) {
-        setWaitingFor(result.revision);
+        setWaitingFor(
+          result.revision,
+        );
       } else {
         setWaitingFor(null);
         setSendingCard(null);
       }
-    } catch (error) {
+    } catch (err) {
       setWaitingFor(null);
       setSendingCard(null);
 
       setError(
-        error instanceof Error
-          ? error.message
+        err instanceof Error
+          ? err.message
           : 'Action failed.',
       );
     } finally {
       actionLock.current = false;
+
       setBusy(false);
     }
   };
@@ -1128,7 +1361,9 @@ export default function ColorClashGame() {
     card: ColorClashCard,
     color?: ColorClashColor,
   ) => {
-    if (!legal(card)) return;
+    if (!legal(card)) {
+      return;
+    }
 
     setWild(null);
 
@@ -1160,19 +1395,20 @@ export default function ColorClashGame() {
   };
 
   // ========================================
-  // INSTANT UNO BUTTON
-  // Completely independent of normal moves.
+  // INDEPENDENT UNO BUTTON
   // ========================================
 
   const pressUno = async () => {
     if (
       !ownWindow ||
-      unoLock.current
+      unoLock.current ||
+      quitLock.current
     ) {
       return;
     }
 
-    const windowId = ownWindow.id;
+    const windowId =
+      ownWindow.id;
 
     if (
       unoSubmission?.id === windowId &&
@@ -1182,8 +1418,6 @@ export default function ColorClashGame() {
     }
 
     unoLock.current = true;
-
-    // Immediate visual response.
 
     setUnoSubmission({
       id: windowId,
@@ -1204,25 +1438,18 @@ export default function ColorClashGame() {
         id: windowId,
         status: 'confirmed',
       });
-    } catch (error) {
-      // Make the button retryable.
-      // Do not reset it because somebody
-      // else played a card.
-
+    } catch (err) {
       setUnoSubmission(null);
 
       setError(
-        error instanceof Error
-          ? error.message
+        err instanceof Error
+          ? err.message
           : 'Could not announce UNO.',
       );
     } finally {
       unoLock.current = false;
     }
   };
-
-  // Clear local confirmation only when the
-  // one-card state has actually ended.
 
   useEffect(() => {
     if (
@@ -1238,7 +1465,7 @@ export default function ColorClashGame() {
   ]);
 
   // ========================================
-  // AUTOMATIC GAME ACTIONS
+  // AUTOMATIC TURN ACTIONS
   // ========================================
 
   useEffect(() => {
@@ -1252,17 +1479,22 @@ export default function ColorClashGame() {
     const tick = async () => {
       if (
         automaticLock.current ||
-        actionLock.current
+        actionLock.current ||
+        quitLock.current
       ) {
         return;
       }
 
-      const current = roomRef.current;
-      const privateHand = latestHand.current;
+      const current =
+        roomRef.current;
+
+      const privateHand =
+        latestHand.current;
 
       if (
         !current ||
-        current.status !== 'playing'
+        current.status !== 'playing' ||
+        !current.playerOrder?.includes(uid)
       ) {
         return;
       }
@@ -1276,15 +1508,14 @@ export default function ColorClashGame() {
         return;
       }
 
-      // Resolve expired UNO windows.
-      // Short client-side grace reduces races
-      // with announcements already in flight.
+      // Resolve an expired UNO announcement.
 
       const expiredUno = Object.entries(
         current.unoWindows ?? {},
       ).find(
         ([targetUid, window]) =>
           now >= window.deadline + 750 &&
+
           !(
             targetUid === uid &&
             unoLock.current
@@ -1294,23 +1525,32 @@ export default function ColorClashGame() {
       const actor =
         current.currentPlayerId;
 
+      // An inactive player automatically
+      // draws or passes after the deadline.
+
       const timedOut =
         !!actor &&
         !current.unoWindows?.[actor] &&
+
         now >=
           (current.turnDeadline ?? Infinity);
 
       const handReady =
         privateHand.matchNumber ===
           current.matchNumber &&
+
         privateHand.revision ===
           current.handRevisions?.[uid];
+
+      // Automatically collect +2/+4
+      // when the player cannot counter.
 
       const forced =
         actor === uid &&
         handReady &&
         !!current.pending &&
         !current.unoWindows?.[uid] &&
+
         !privateHand.cards.some(
           card =>
             card.value === current.pending?.kind,
@@ -1326,7 +1566,8 @@ export default function ColorClashGame() {
 
       automaticLock.current = true;
 
-      lastAutomaticAttempt.current = now;
+      lastAutomaticAttempt.current =
+        now;
 
       try {
         if (expiredUno) {
@@ -1343,79 +1584,168 @@ export default function ColorClashGame() {
         } else {
           await autoColorClashGameTurn(
             code,
+
             current.revision ?? -1,
           );
         }
       } catch {
-        // Another connected player may already
-        // have completed the same action.
-        // The next tick will retry if needed.
+        // A different client may already
+        // have processed the same action.
       } finally {
         automaticLock.current = false;
       }
     };
 
     const interval = setInterval(
-      () => {
-        void tick();
-      },
+      () => void tick(),
       350,
     );
 
-    return () => clearInterval(interval);
-  }, [member, code, uid, room?.status]);
+    return () =>
+      clearInterval(interval);
+  }, [
+    member,
+    code,
+    uid,
+    room?.status,
+  ]);
 
   // ========================================
-  // SOUND TOGGLE
+  // EXIT AND QUIT
   // ========================================
 
-  const toggleSound = () => {
-    if (soundEnabled) {
-      setSoundEnabled(false);
-    } else {
-      setSoundEnabled(true);
+  const exit = async () => {
+    try {
+      await clearColorClashSession();
+    } catch {
+      // Continue even if local storage fails.
     }
+
+    router.replace(
+      '/color-clash' as Href,
+    );
   };
 
-  // ========================================
-  // EXIT
-  // ========================================
+  const quitMatch = async () => {
+    if (
+      !code ||
+      quitLock.current
+    ) {
+      return;
+    }
 
-  const exit = () => {
-    router.replace('/color-clash' as Href);
+    quitLock.current = true;
+
+    setQuitting(true);
+    setError('');
+
+    try {
+      await leaveColorClashRoom(code);
+
+      setConfirmQuit(false);
+
+      await exit();
+    } catch (err) {
+      // Recover when the leave request
+      // succeeded but its response was lost.
+
+      const latestRoom =
+        roomRef.current;
+
+      if (
+        latestRoom &&
+        !latestRoom.players[uid]
+      ) {
+        await exit();
+        return;
+      }
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not leave. Try again.',
+      );
+    } finally {
+      quitLock.current = false;
+
+      setQuitting(false);
+    }
   };
 
   // ========================================
   // PLAYER SEAT RENDERER
   // ========================================
 
-  const seat = (playerId: string) => (
-    <PlayerSeat
-      key={playerId}
+  const seat = (playerId: string) => {
+    const departed =
+      room?.departedPlayers?.[playerId];
 
-      name={
-        room?.players[playerId] ?? 'Player'
-      }
+    return (
+      <PlayerSeat
+        key={playerId}
 
-      count={
-        room?.cardCounts?.[playerId] ?? 0
-      }
+        name={playerName(playerId)}
 
-      index={ids.indexOf(playerId)}
+        count={
+          room?.cardCounts?.[playerId] ?? 0
+        }
 
-      active={
-        room?.currentPlayerId === playerId
-      }
+        index={
+          ids.indexOf(playerId)
+        }
 
-      uno={
-        !!room?.unoCalled?.[playerId] &&
-        room?.cardCounts?.[playerId] === 1
-      }
-    />
-  );
+        active={
+          !departed &&
+          room?.currentPlayerId === playerId
+        }
+
+        uno={
+          !departed &&
+          !!room?.unoCalled?.[playerId] &&
+          room?.cardCounts?.[playerId] === 1
+        }
+
+        host={
+          room?.hostId === playerId
+        }
+
+        departure={
+          departed
+
+            ? departed.quit
+              ? 'QUIT'
+              : 'LEFT'
+
+            : undefined
+        }
+
+        connection={
+          statusOf(playerId)
+        }
+      />
+    );
+  };
 
   // ========================================
-  // LOADING AND MEMBERSHIP
+  // QUITTING STATE
+  // ========================================
+
+  if (quitting && !member) {
+    return (
+      <View style={s.loading}>
+        <ActivityIndicator
+          color="#A5E1EB"
+        />
+
+        <Text style={s.heading}>
+          Leaving match...
+        </Text>
+      </View>
+    );
+  }
+
+  // ========================================
+  // LOADING / INVALID SESSION
   // ========================================
 
   if (!room || !member) {
@@ -1424,13 +1754,17 @@ export default function ColorClashGame() {
         <Text style={s.heading}>
           {!code
             ? 'Invalid room code'
+
             : room && !member
-              ? 'You are not in this match.'
+              ? 'You are no longer in this match.'
+
               : 'Connecting to Color Clash…'}
         </Text>
 
         {!error && !room && !!code && (
-          <ActivityIndicator color="#A5E1EB" />
+          <ActivityIndicator
+            color="#A5E1EB"
+          />
         )}
 
         {!!error && (
@@ -1441,10 +1775,10 @@ export default function ColorClashGame() {
 
         <TouchableOpacity
           style={s.button}
-          onPress={exit}
+          onPress={() => void exit()}
         >
           <Text style={s.buttonText}>
-            Room menu
+            Room Menu
           </Text>
         </TouchableOpacity>
       </View>
@@ -1452,7 +1786,7 @@ export default function ColorClashGame() {
   }
 
   // ========================================
-  // OLD MATCH VERSION
+  // VERSION CHECK
   // ========================================
 
   if (
@@ -1465,16 +1799,15 @@ export default function ColorClashGame() {
         </Text>
 
         <Text style={s.muted}>
-          This match was created with an old
-          version of Color Clash.
+          This room uses an older game engine.
         </Text>
 
         <TouchableOpacity
           style={s.button}
-          onPress={exit}
+          onPress={() => void exit()}
         >
           <Text style={s.buttonText}>
-            Room menu
+            Room Menu
           </Text>
         </TouchableOpacity>
       </View>
@@ -1482,7 +1815,7 @@ export default function ColorClashGame() {
   }
 
   // ========================================
-  // WINNER SCREEN
+  // VICTORY SCREEN
   // ========================================
 
   if (room.status === 'finished') {
@@ -1492,10 +1825,15 @@ export default function ColorClashGame() {
     const isHost =
       room.hostId === uid;
 
+    const canRematch =
+      activeIds.length >= 2;
+
     return (
       <View style={s.victoryScreen}>
         <ScrollView
-          contentContainerStyle={s.victoryContent}
+          contentContainerStyle={
+            s.victoryContent
+          }
         >
           <Text style={s.trophy}>
             🏆
@@ -1504,78 +1842,138 @@ export default function ColorClashGame() {
           <Text style={s.victoryTitle}>
             {winner
               ? 'YOU WIN!'
+
               : `${
-                  room.players[
-                    room.winnerId ?? ''
-                  ] ?? 'Player'
+                  playerName(
+                    room.winnerId ?? '',
+                  )
                 } WINS!`}
           </Text>
 
           <Text style={s.muted}>
-            Match {room.matchNumber} completed
+            {room.lastAction}
           </Text>
 
+          <Text style={s.muted}>
+            Match {matchNumber} completed
+          </Text>
+
+          {/* RESULTS */}
+
           <View style={s.results}>
-            {ids.map(id => (
-              <View
-                key={id}
-                style={s.resultRow}
-              >
-                <Avatar
-                  index={ids.indexOf(id)}
-                  active={id === room.winnerId}
-                />
+            {ids.map(id => {
+              const departed =
+                room.departedPlayers?.[id];
 
-                <Text style={s.resultName}>
-                  {room.players[id]}
-                  {id === room.winnerId
-                    ? ' 🏆'
-                    : ''}
-                </Text>
+              const isWinner =
+                id === room.winnerId;
 
-                <Text style={s.muted}>
-                  {room.cardCounts?.[id] ?? 0}
-                  {' '}left
-                </Text>
-              </View>
-            ))}
+              return (
+                <View
+                  key={id}
+
+                  style={[
+                    s.resultRow,
+
+                    !!departed &&
+                      s.resultDeparted,
+                  ]}
+                >
+                  <Avatar
+                    index={ids.indexOf(id)}
+                    active={isWinner}
+                  />
+
+                  <Text style={s.resultName}>
+                    {playerName(id)}
+
+                    {isWinner
+                      ? ' 🏆'
+                      : ''}
+                  </Text>
+
+                  <Text
+                    style={
+                      departed?.quit
+
+                        ? s.quitLabel
+
+                        : s.muted
+                    }
+                  >
+                    {departed?.quit
+                      ? 'QUIT'
+
+                      : isWinner
+                        ? 'Winner'
+
+                        : departed
+                          ? 'LEFT'
+
+                          : `${
+                              room.cardCounts?.[id] ?? 0
+                            } left`}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
 
-          {isHost ? (
-            <TouchableOpacity
-              style={[
-                s.button,
-                busy && s.dim,
-              ]}
-              disabled={busy}
-              onPress={() =>
-                void run(() =>
-                  rematchColorClashGame(
-                    code,
-                    rev,
-                  ),
-                )
-              }
-            >
-              <Text style={s.buttonText}>
-                {busy
-                  ? 'Starting…'
-                  : '🔄 Play Again'}
+          {/* REMATCH */}
+
+          {canRematch ? (
+            isHost ? (
+              <TouchableOpacity
+                style={[
+                  s.button,
+
+                  (busy || quitting) &&
+                    s.dim,
+                ]}
+
+                disabled={busy || quitting}
+
+                onPress={() =>
+                  void run(() =>
+                    rematchColorClashGame(
+                      code,
+                      rev,
+                    ),
+                  )
+                }
+              >
+                <Text style={s.buttonText}>
+                  {busy
+                    ? 'Starting...'
+                    : '🔄 Play Again'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={s.muted}>
+                Waiting for the host
+                to start another match.
               </Text>
-            </TouchableOpacity>
+            )
           ) : (
             <Text style={s.muted}>
-              Waiting for the host to start
-              another match.
+              At least two players are
+              required for another match.
             </Text>
           )}
 
           <TouchableOpacity
-            onPress={exit}
+            disabled={quitting || busy}
+
+            onPress={() =>
+              void quitMatch()
+            }
+
             style={s.secondaryButton}
           >
             <Text style={s.white}>
-              Return to Rooms
+              {quitting
+                ? 'Leaving...'
+                : 'Return to Rooms'}
             </Text>
           </TouchableOpacity>
 
@@ -1596,13 +1994,13 @@ export default function ColorClashGame() {
   }
 
   // ========================================
-  // GAME STATE
+  // INTERFACE STATE
   // ========================================
 
   const turnName =
-    room.players[
-      room.currentPlayerId ?? ''
-    ] ?? 'Waiting';
+    playerName(
+      room.currentPlayerId ?? '',
+    );
 
   const unoPending =
     !!ownWindow &&
@@ -1617,6 +2015,7 @@ export default function ColorClashGame() {
       unoPending &&
       unoSubmission?.status === 'confirmed'
     ) ||
+
     (
       !!room.unoCalled?.[uid] &&
       room.cardCounts?.[uid] === 1
@@ -1628,7 +2027,9 @@ export default function ColorClashGame() {
     !hand.some(legal);
 
   const canDraw =
-    canAct && !wild && !forced;
+    canAct &&
+    !wild &&
+    !forced;
 
   // ========================================
   // GAME INTERFACE
@@ -1637,17 +2038,23 @@ export default function ColorClashGame() {
   return (
     <ScrollView
       style={s.root}
-      contentContainerStyle={s.content}
+
+      contentContainerStyle={
+        s.content
+      }
     >
       {/* HEADER */}
 
       <View style={s.header}>
         <TouchableOpacity
-          onPress={exit}
-          disabled={busy}
+          onPress={() =>
+            setConfirmQuit(true)
+          }
+
+          disabled={quitting}
         >
-          <Text style={s.link}>
-            ← Rooms
+          <Text style={s.quitLink}>
+            ← Quit Match
           </Text>
         </TouchableOpacity>
 
@@ -1656,15 +2063,98 @@ export default function ColorClashGame() {
         </Text>
 
         <TouchableOpacity
-          onPress={toggleSound}
+          onPress={() =>
+            setSoundEnabled(
+              enabled => !enabled,
+            )
+          }
         >
           <Text style={s.soundIcon}>
-            {soundEnabled ? '🔊' : '🔇'}
+            {soundEnabled
+              ? '🔊'
+              : '🔇'}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* TURN INDICATOR */}
+      {/* QUIT CONFIRMATION */}
+
+      <Modal
+        visible={confirmQuit}
+
+        transparent
+
+        animationType="fade"
+
+        onRequestClose={() => {
+          if (!quitting) {
+            setConfirmQuit(false);
+          }
+        }}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalPanel}>
+            <Text style={s.heading}>
+              Quit this match?
+            </Text>
+
+            <Text style={s.muted}>
+              {activeIds.length === 2
+
+                ? 'Your opponent will automatically win.'
+
+                : 'The remaining players will continue without you.'}
+            </Text>
+
+            <Text style={s.muted}>
+              You cannot rejoin this match
+              after deliberately quitting.
+            </Text>
+
+            {!!error && (
+              <Text style={s.error}>
+                {error}
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={s.button}
+
+              disabled={quitting}
+
+              onPress={() =>
+                setConfirmQuit(false)
+              }
+            >
+              <Text style={s.buttonText}>
+                Continue Playing
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={quitting}
+
+              onPress={() =>
+                void quitMatch()
+              }
+
+              style={[
+                s.dangerButton,
+
+                quitting && s.dim,
+              ]}
+            >
+              <Text style={s.white}>
+                {quitting
+                  ? 'Leaving...'
+                  : 'Yes, Quit Match'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* CURRENT TURN */}
 
       <View style={s.turnBanner}>
         <View style={s.turnRow}>
@@ -1681,6 +2171,16 @@ export default function ColorClashGame() {
           </Text>
         </View>
 
+        <Text style={s.muted}>
+          {room.direction === 1
+            ? 'Clockwise'
+            : 'Counterclockwise'}
+
+          {' · '}
+
+          {activeIds.length} active players
+        </Text>
+
         {!!room.turnDeadline && (
           <Countdown
             deadline={room.turnDeadline}
@@ -1688,15 +2188,23 @@ export default function ColorClashGame() {
         )}
       </View>
 
-      {/* OTHER PLAYERS */}
+      {/* ADDITIONAL OPPONENTS */}
 
       {others.length > 2 && (
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.extraSeats}
+
+          showsHorizontalScrollIndicator={
+            false
+          }
+
+          contentContainerStyle={
+            s.extraSeats
+          }
         >
-          {others.slice(1, -1).map(seat)}
+          {others
+            .slice(1, -1)
+            .map(seat)}
         </ScrollView>
       )}
 
@@ -1704,6 +2212,7 @@ export default function ColorClashGame() {
 
       <View
         style={s.arena}
+
         onLayout={event => {
           const {
             width,
@@ -1713,30 +2222,31 @@ export default function ColorClashGame() {
           setArenaSize(old =>
             old.width === width &&
             old.height === height
+
               ? old
               : { width, height },
           );
         }}
       >
-        {/* TABLE */}
-
         <View style={s.table}>
           <View style={s.tableRow}>
+            {/* LEFT PLAYER */}
+
             <View style={s.side}>
               {others[0] &&
                 seat(others[0])}
             </View>
 
+            {/* CENTER PILES */}
+
             <View style={s.center}>
               <View style={s.piles}>
-                {/* DRAW PILE */}
-
                 <TouchableOpacity
                   disabled={
                     !canDraw ||
-                    skip ||
                     room.phase === 'drawn'
                   }
+
                   activeOpacity={0.7}
 
                   onPress={() =>
@@ -1755,11 +2265,11 @@ export default function ColorClashGame() {
                   </Text>
                 </TouchableOpacity>
 
-                {/* DISCARD PILE */}
-
                 <View>
                   {room.topCard && (
-                    <Card card={room.topCard} />
+                    <Card
+                      card={room.topCard}
+                    />
                   )}
 
                   <Text style={s.pileLabel}>
@@ -1795,23 +2305,21 @@ export default function ColorClashGame() {
                   +{penalty} PENDING
                 </Text>
               )}
-
-              {skip && (
-                <Text style={s.penalty}>
-                  COUNTER OR SKIP
-                </Text>
-              )}
             </View>
+
+            {/* RIGHT PLAYER */}
 
             <View style={s.side}>
               {others.length > 1 &&
                 seat(
-                  others[others.length - 1],
+                  others[
+                    others.length - 1
+                  ],
                 )}
             </View>
           </View>
 
-          {/* LAST PLAYER / ACTION */}
+          {/* LAST ACTION */}
 
           <View style={s.actionBox}>
             {room.lastPlayedBy && (
@@ -1819,9 +2327,9 @@ export default function ColorClashGame() {
                 Last card:{' '}
 
                 {
-                  room.players[
-                    room.lastPlayedBy
-                  ]
+                  playerName(
+                    room.lastPlayedBy,
+                  )
                 }
 
                 {' · '}
@@ -1838,27 +2346,40 @@ export default function ColorClashGame() {
           </View>
         </View>
 
-        {/* PRIVATE HAND */}
+        {/* MY HAND */}
 
         <View
           style={[
             s.self,
-            myTurn && s.activeSeat,
+
+            myTurn &&
+              s.activeSeat,
           ]}
         >
           <View style={s.selfHeader}>
             <Avatar
               index={myIndex}
+
               active={!!myTurn}
+
+              connection={statusOf(uid)}
             />
 
             <View>
               <Text style={s.seatName}>
-                {room.players[uid]} (You)
+                {playerName(uid)} (You)
+
+                {room.hostId === uid
+                  ? ' 👑'
+                  : ''}
               </Text>
 
               <Text style={s.muted}>
-                {room.cardCounts?.[uid] ?? hand.length}
+                {
+                  room.cardCounts?.[uid]
+                  ?? hand.length
+                }
+
                 {' '}cards
               </Text>
             </View>
@@ -1872,13 +2393,19 @@ export default function ColorClashGame() {
 
           <ScrollView
             horizontal
-            showsHorizontalScrollIndicator={false}
+
+            showsHorizontalScrollIndicator={
+              false
+            }
+
             contentContainerStyle={s.hand}
           >
             {handState.matchNumber === matchNumber &&
               hand.map((card, index) => (
                 <HandCard
-                  key={`${matchNumber}-${card.id}`}
+                  key={
+                    `${matchNumber}-${card.id}`
+                  }
 
                   card={card}
 
@@ -1893,6 +2420,7 @@ export default function ColorClashGame() {
 
                   delay={
                     room.lastEvent?.kind === 'start'
+
                       ? index * 75
                       : 0
                   }
@@ -1911,16 +2439,17 @@ export default function ColorClashGame() {
           )}
         </View>
 
-        {/* FLYING CARD OVERLAY */}
+        {/* CARD MOVEMENT */}
 
         {flight && (
           <FlyingCard
             key={flight.id}
             flight={flight}
 
-            onFinish={() =>
+            onFinish={id =>
               setFlight(current =>
-                current?.id === flight.id
+                current?.id === id
+
                   ? null
                   : current,
               )
@@ -1929,7 +2458,7 @@ export default function ColorClashGame() {
         )}
       </View>
 
-      {/* UNO BUTTON */}
+      {/* UNO ANNOUNCEMENT */}
 
       {(ownWindow || unoConfirmed) && (
         <View
@@ -1942,12 +2471,14 @@ export default function ColorClashGame() {
         >
           <TouchableOpacity
             accessibilityRole="button"
+
             activeOpacity={0.65}
 
             disabled={
               unoSending ||
               unoConfirmed ||
-              !ownWindow
+              !ownWindow ||
+              quitting
             }
 
             style={[
@@ -1957,21 +2488,22 @@ export default function ColorClashGame() {
                 s.unoButtonConfirmed,
             ]}
 
-            onPress={() => {
-              void pressUno();
-            }}
+            onPress={() =>
+              void pressUno()
+            }
           >
             <Text style={s.unoTitle}>
               {unoConfirmed
                 ? 'UNO CALLED ✓'
+
                 : unoSending
                   ? 'Calling UNO…'
+
                   : 'UNO!'}
             </Text>
 
             {!unoConfirmed &&
-              !unoSending &&
-              ownWindow && (
+              !unoSending && (
                 <Text style={s.whiteSmall}>
                   TAP NOW — ONE CARD LEFT
                 </Text>
@@ -1989,8 +2521,10 @@ export default function ColorClashGame() {
           <Text style={s.whiteSmall}>
             {unoConfirmed
               ? 'Announcement confirmed.'
+
               : unoSending
                 ? 'Waiting for server confirmation.'
+
                 : 'Call UNO or receive two penalty cards.'}
           </Text>
         </View>
@@ -2008,6 +2542,7 @@ export default function ColorClashGame() {
             {COLOR_NAMES.map(color => (
               <TouchableOpacity
                 key={color}
+
                 disabled={!canAct}
 
                 style={[
@@ -2031,7 +2566,9 @@ export default function ColorClashGame() {
           </View>
 
           <TouchableOpacity
-            onPress={() => setWild(null)}
+            onPress={() =>
+              setWild(null)
+            }
           >
             <Text style={s.link}>
               Cancel
@@ -2040,15 +2577,16 @@ export default function ColorClashGame() {
         </View>
       )}
 
-      {/* GAMEPLAY CONTROLS */}
+      {/* DRAW / PASS CONTROLS */}
 
       <View style={s.controls}>
-        {room.phase === 'drawn' || skip ? (
+        {room.phase === 'drawn' ? (
           <TouchableOpacity
             disabled={!canDraw}
 
             style={[
               s.button,
+
               !canDraw && s.dim,
             ]}
 
@@ -2062,9 +2600,7 @@ export default function ColorClashGame() {
             }
           >
             <Text style={s.buttonText}>
-              {skip
-                ? 'Accept Skip'
-                : 'Keep Card / Pass'}
+              Keep Card / Pass
             </Text>
           </TouchableOpacity>
         ) : (
@@ -2073,6 +2609,7 @@ export default function ColorClashGame() {
 
             style={[
               s.button,
+
               !canDraw && s.dim,
             ]}
 
@@ -2088,37 +2625,44 @@ export default function ColorClashGame() {
             <Text style={s.buttonText}>
               {busy
                 ? 'Processing…'
+
                 : penalty
                   ? `Draw ${penalty} Cards`
+
                   : 'Draw Card'}
             </Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* GAME HINT */}
+      {/* INSTRUCTIONS */}
 
       <Text style={s.hint}>
         {ownWindow && !unoConfirmed
           ? 'Remember to call UNO!'
+
           : !myTurn
             ? `Waiting for ${turnName}…`
+
             : forced
               ? 'Applying automatic penalty…'
+
               : penalty > 0
+
                 ? `Counter with ${
                     room.pending?.kind === 'wild4'
                       ? '+4'
                       : '+2'
                   } or draw ${penalty}.`
-                : skip
-                  ? 'Counter the action or accept the skip.'
-                  : room.phase === 'drawn'
-                    ? 'Play the drawn card or keep it.'
-                    : 'Tap a highlighted card to play.'}
+
+                : room.phase === 'drawn'
+
+                  ? 'Play the drawn card or keep it.'
+
+                  : 'Match the color or symbol to play.'}
       </Text>
 
-      {/* ERROR STATUS */}
+      {/* NETWORK / ERROR STATUS */}
 
       {!!error && (
         <View style={s.errorBox}>
@@ -2127,7 +2671,9 @@ export default function ColorClashGame() {
           </Text>
 
           <TouchableOpacity
-            onPress={() => setError('')}
+            onPress={() =>
+              setError('')
+            }
           >
             <Text style={s.link}>
               Dismiss
@@ -2192,6 +2738,13 @@ const s = StyleSheet.create({
     padding: 5,
   },
 
+  quitLink: {
+    color: '#FF9CAD',
+    fontSize: 12,
+    fontWeight: '800',
+    padding: 5,
+  },
+
   soundIcon: {
     fontSize: 23,
     padding: 5,
@@ -2215,6 +2768,10 @@ const s = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+
+  // ========================================
+  // TURN INDICATOR
+  // ========================================
 
   turnBanner: {
     backgroundColor: '#26324D',
@@ -2270,6 +2827,10 @@ const s = StyleSheet.create({
     borderRadius: 10,
   },
 
+  // ========================================
+  // TABLE
+  // ========================================
+
   arena: {
     position: 'relative',
     gap: 10,
@@ -2289,7 +2850,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 4,
-    minHeight: 170,
+    minHeight: 180,
   },
 
   side: {
@@ -2299,6 +2860,7 @@ const s = StyleSheet.create({
 
   center: {
     flex: 1.65,
+    minWidth: 108,
     alignItems: 'center',
     gap: 7,
   },
@@ -2332,6 +2894,10 @@ const s = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
 
+  // ========================================
+  // PLAYER AVATARS AND SEATS
+  // ========================================
+
   avatar: {
     width: 44,
     height: 44,
@@ -2340,6 +2906,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
+    position: 'relative',
   },
 
   avatarActive: {
@@ -2348,6 +2915,17 @@ const s = StyleSheet.create({
 
   avatarEmoji: {
     fontSize: 25,
+  },
+
+  avatarStatus: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#253450',
   },
 
   seat: {
@@ -2366,10 +2944,29 @@ const s = StyleSheet.create({
     borderWidth: 2,
   },
 
+  departedSeat: {
+    opacity: 0.6,
+    backgroundColor: '#392C40',
+    borderColor: '#FF7488',
+  },
+
   seatName: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  quitLabel: {
+    color: '#FF7488',
+    fontSize: 13,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  connectionText: {
+    fontSize: 9,
+    fontWeight: '700',
     textAlign: 'center',
   },
 
@@ -2412,6 +3009,10 @@ const s = StyleSheet.create({
     gap: 8,
   },
 
+  // ========================================
+  // ACTION HISTORY
+  // ========================================
+
   actionBox: {
     backgroundColor: '#10302C',
     borderRadius: 10,
@@ -2440,6 +3041,10 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // ========================================
+  // MY HAND
+  // ========================================
+
   self: {
     backgroundColor: '#242841',
     padding: 11,
@@ -2464,9 +3069,13 @@ const s = StyleSheet.create({
     paddingBottom: 6,
   },
 
+  // ========================================
+  // CARD DESIGN
+  // ========================================
+
   card: {
-    width: 61,
-    height: 89,
+    width: 52,
+    height: 83,
     borderRadius: 9,
     borderWidth: 2,
     borderColor: '#FFFFFF',
@@ -2476,9 +3085,9 @@ const s = StyleSheet.create({
   },
 
   cardOval: {
-    width: 41,
-    height: 49,
-    borderRadius: 25,
+    width: 35,
+    height: 43,
+    borderRadius: 23,
     backgroundColor: '#FFFFFF29',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2487,7 +3096,7 @@ const s = StyleSheet.create({
 
   cardValue: {
     color: '#FFFFFF',
-    fontSize: 25,
+    fontSize: 23,
     fontWeight: '900',
     transform: [{ rotate: '15deg' }],
   },
@@ -2506,8 +3115,8 @@ const s = StyleSheet.create({
   },
 
   cardBack: {
-    width: 61,
-    height: 89,
+    width: 52,
+    height: 83,
     borderRadius: 9,
     borderWidth: 2,
     borderColor: '#FFFFFF',
@@ -2519,7 +3128,7 @@ const s = StyleSheet.create({
 
   backStar: {
     color: '#D6B9FF',
-    fontSize: 29,
+    fontSize: 28,
     fontWeight: '900',
   },
 
@@ -2559,6 +3168,10 @@ const s = StyleSheet.create({
     elevation: 15,
   },
 
+  // ========================================
+  // UNO
+  // ========================================
+
   unoPanel: {
     backgroundColor: '#532741',
     borderColor: '#EE647D',
@@ -2594,6 +3207,10 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // ========================================
+  // WILD COLOR SELECTION
+  // ========================================
+
   panel: {
     backgroundColor: '#303550',
     borderRadius: 14,
@@ -2614,6 +3231,10 @@ const s = StyleSheet.create({
     borderRadius: 10,
     minWidth: 65,
   },
+
+  // ========================================
+  // BUTTONS
+  // ========================================
 
   controls: {
     flexDirection: 'row',
@@ -2644,6 +3265,38 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
 
+  dangerButton: {
+    backgroundColor: '#D73D53',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+
+  // ========================================
+  // QUIT MODAL
+  // ========================================
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: '#000000AA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+
+  modalPanel: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#242841',
+    borderRadius: 20,
+    padding: 24,
+    gap: 18,
+  },
+
+  // ========================================
+  // STATUS AND ERRORS
+  // ========================================
+
   hint: {
     color: '#C8CCDF',
     fontSize: 12,
@@ -2670,6 +3323,10 @@ const s = StyleSheet.create({
     fontSize: 10,
     textAlign: 'center',
   },
+
+  // ========================================
+  // VICTORY SCREEN
+  // ========================================
 
   victoryScreen: {
     flex: 1,
@@ -2711,6 +3368,11 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    paddingVertical: 5,
+  },
+
+  resultDeparted: {
+    opacity: 0.65,
   },
 
   resultName: {
@@ -2719,15 +3381,19 @@ const s = StyleSheet.create({
     flex: 1,
   },
 
+  // ========================================
+  // CONFETTI
+  // ========================================
+
   confettiContainer: {
-  position: 'absolute',
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-  overflow: 'hidden',
-  zIndex: 100,
-},
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+    zIndex: 100,
+  },
 
   confettiPiece: {
     position: 'absolute',

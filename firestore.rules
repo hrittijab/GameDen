@@ -26,11 +26,12 @@ service cloud.firestore {
           '^[A-HJ-NP-Z2-9]{8}$'
         )
 
-        && request.resource.data.keys().hasOnly([
-          'hostId',
-          'status',
-          'players'
-        ])
+        && request.resource.data.keys()
+          .hasOnly([
+            'hostId',
+            'status',
+            'players'
+          ])
 
         && request.resource.data.hostId
           == request.auth.uid
@@ -43,8 +44,8 @@ service cloud.firestore {
             request.auth.uid
           ])
 
-        && request.resource.data.players.size()
-          == 1
+        && request.resource.data.players
+          .size() == 1
 
         && validName(
           request.resource.data.players[
@@ -61,8 +62,8 @@ service cloud.firestore {
           .affectedKeys()
           .hasOnly(['players'])
 
-        && request.resource.data.players.size()
-          <= 20
+        && request.resource.data.players
+          .size() <= 20
 
         && !resource.data.players
           .keys().hasAny([
@@ -72,7 +73,9 @@ service cloud.firestore {
         && request.resource.data.players
           .diff(resource.data.players)
           .addedKeys()
-          .hasOnly([request.auth.uid])
+          .hasOnly([
+            request.auth.uid
+          ])
 
         && request.resource.data.players
           .diff(resource.data.players)
@@ -94,8 +97,9 @@ service cloud.firestore {
 
       allow delete: if false;
 
-      // Each player can only read
-      // their own private hand.
+      // ====================================
+      // PRIVATE PLAYER HANDS
+      // ====================================
 
       match /hands/{playerId} {
 
@@ -110,10 +114,30 @@ service cloud.firestore {
         allow list, create, update, delete:
           if false;
       }
+
+      // ====================================
+      // CONNECTION STATUS
+      // ====================================
+
+      match /presence/{playerId} {
+
+        allow get, list: if signedIn()
+
+          && request.auth.uid in get(
+            /databases/$(database)/documents/colorClashRooms/$(roomCode)
+          ).data.players.keys();
+
+        // Only the trusted backend can
+        // create or modify heartbeats.
+
+        allow create, update, delete:
+          if false;
+      }
     }
 
-    // The entire draw pile and discard history
-    // are accessible only to the trusted backend.
+    // ======================================
+    // PRIVATE GAME ENGINE STATE
+    // ======================================
 
     match /colorClashSecrets/{roomCode} {
       allow read, write: if false;

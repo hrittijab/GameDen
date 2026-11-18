@@ -1,10 +1,6 @@
 
 import { randomInt, randomUUID } from 'node:crypto';
 
-// ==========================================
-// CONFIGURATION
-// ==========================================
-
 export const COLORS = [
   'red',
   'blue',
@@ -26,7 +22,7 @@ export type Card = {
 };
 
 export type Pending = {
-  kind: 'draw2' | 'wild4' | 'skip' | 'reverse';
+  kind: 'draw2' | 'wild4';
   amount: number;
 };
 
@@ -35,9 +31,23 @@ export type UnoWindow = {
   deadline: number;
 };
 
+export type DepartedPlayer = {
+  name: string;
+  quit: boolean;
+  cardsRemaining: number;
+};
+
 export type GameEvent = {
   id: string;
-  kind: 'start' | 'play' | 'draw' | 'pass' | 'uno' | 'penalty' | 'win';
+  kind:
+    | 'start'
+    | 'play'
+    | 'draw'
+    | 'pass'
+    | 'uno'
+    | 'penalty'
+    | 'win';
+
   uid: string;
   card?: Card;
   count?: number;
@@ -48,7 +58,14 @@ export type Room = {
   status: 'lobby' | 'playing' | 'finished';
 
   players: Record<string, string>;
+
   playerOrder: string[];
+  seatOrder: string[];
+
+  departedPlayers: Record<
+    string,
+    DepartedPlayer
+  >;
 
   currentPlayerId: string | null;
   direction: number;
@@ -75,7 +92,6 @@ export type Room = {
 
   lastAction: string;
   lastPlayedBy: string | null;
-
   lastEvent: GameEvent;
 };
 
@@ -109,7 +125,7 @@ function requireRule(
 }
 
 // ==========================================
-// SHUFFLE
+// DECK AND SHUFFLE
 // ==========================================
 
 export function shuffle<T>(items: T[]): T[] {
@@ -126,10 +142,6 @@ export function shuffle<T>(items: T[]): T[] {
 
   return result;
 }
-
-// ==========================================
-// DECK GENERATION
-// ==========================================
 
 function createDeck(copies: number): Card[] {
   const cards: Card[] = [];
@@ -170,7 +182,7 @@ function createDeck(copies: number): Card[] {
 }
 
 // ==========================================
-// HUMAN-READABLE CARD LABELS
+// GAME EVENTS
 // ==========================================
 
 function describeCard(card: Card): string {
@@ -182,16 +194,13 @@ function describeCard(card: Card): string {
     wild4: 'Wild +4',
   };
 
-  const value = labels[card.value] ?? card.value;
+  const value =
+    labels[card.value] ?? card.value;
 
   return card.color === 'wild'
     ? value
     : `${card.color.toUpperCase()} ${value}`;
 }
-
-// ==========================================
-// RECORD GAME EVENT
-// ==========================================
 
 function event(
   room: Room,
@@ -204,13 +213,17 @@ function event(
     id: randomUUID(),
     kind,
     uid,
+
     ...(card ? { card } : {}),
-    ...(count !== undefined ? { count } : {}),
+
+    ...(count !== undefined
+      ? { count }
+      : {}),
   };
 }
 
 // ==========================================
-// START / REMATCH
+// START AND REMATCH
 // ==========================================
 
 export function start(
@@ -271,7 +284,9 @@ export function start(
 
     status: 'playing',
 
-    playerOrder: ids,
+    playerOrder: [...ids],
+    seatOrder: [...ids],
+    departedPlayers: {},
 
     currentPlayerId:
       ids[(matchNumber - 1) % ids.length],
@@ -327,12 +342,13 @@ export function start(
 }
 
 // ==========================================
-// TURN ORDER
+// TURN MANAGEMENT
 // ==========================================
 
 function next(
   room: Room,
   uid: string,
+  steps = 1,
 ): string {
   const index = room.playerOrder.indexOf(uid);
   const total = room.playerOrder.length;
@@ -342,9 +358,16 @@ function next(
     'Invalid player order.',
   );
 
-  return room.playerOrder[
-    (index + room.direction + total) % total
-  ];
+  const position =
+    (
+      (
+        index +
+        room.direction * steps
+      ) % total +
+      total
+    ) % total;
+
+  return room.playerOrder[position];
 }
 
 function advance(
@@ -360,7 +383,8 @@ function advance(
 
   state.drawnCardId = null;
 
-  room.turnDeadline = now + TURN_DURATION_MS;
+  room.turnDeadline =
+    now + TURN_DURATION_MS;
 }
 
 // ==========================================
@@ -374,7 +398,7 @@ function take(
   const result: Card[] = [];
 
   while (result.length < amount) {
-    if (state.deck.length === 0) {
+    if (!state.deck.length) {
       if (state.discardPile.length <= 1) {
         break;
       }
@@ -419,10 +443,6 @@ function openUno(
   };
 }
 
-// Announcements deliberately do not increment
-// the gameplay revision. Another player's move
-// must not invalidate the UNO button.
-
 export function announceUno(
   room: Room,
   uid: string,
@@ -436,12 +456,10 @@ export function announceUno(
 
   requireRule(
     room.playerOrder.includes(uid),
-    'You are not a player.',
+    'You are not an active player.',
   );
 
   const window = room.unoWindows[uid];
-
-  // Retried successful requests are harmless.
 
   if (
     !window &&
@@ -476,10 +494,6 @@ export function announceUno(
   event(room, 'uno', uid);
 }
 
-// ==========================================
-// MISSED UNO PENALTY
-// ==========================================
-
 export function resolveUno(
   room: Room,
   state: State,
@@ -492,9 +506,8 @@ export function resolveUno(
     return;
   }
 
-  const window = room.unoWindows[targetUid];
-
-  // Duplicate penalty requests are harmless.
+  const window =
+    room.unoWindows[targetUid];
 
   if (!window || window.id !== windowId) {
     return;
@@ -516,6 +529,10 @@ export function resolveUno(
 
   room.unoCalled[targetUid] = false;
 
+  if (hand.length !== 1) {
+    return;
+  }
+
   const cards = take(state, 2);
 
   hand.push(...cards);
@@ -536,15 +553,13 @@ export function resolveUno(
 
   if (cards.length > 0) {
     room.revision++;
-  } else if (hand.length === 1) {
-    // Avoid permanently blocking a player
-    // if no penalty cards remain available.
+  } else {
     room.unoCalled[targetUid] = true;
   }
 }
 
 // ==========================================
-// VALID CARD CHECK
+// CARD VALIDATION
 // ==========================================
 
 export function legal(
@@ -560,6 +575,8 @@ export function legal(
     return false;
   }
 
+  // Only draw penalties can be stacked.
+
   if (room.pending) {
     return card.value === room.pending.kind;
   }
@@ -574,15 +591,15 @@ export function legal(
     return true;
   }
 
+  // This permits different-colored
+  // Skip-on-Skip and Reverse-on-Reverse,
+  // as long as it is the player's turn.
+
   return (
     card.color === room.activeColor ||
     card.value === room.topCard.value
   );
 }
-
-// ==========================================
-// UPDATE COUNTS
-// ==========================================
 
 function sync(
   room: Room,
@@ -614,7 +631,7 @@ export function apply(
 
   requireRule(
     room.playerOrder.includes(uid),
-    'You are not a player.',
+    'You are not an active player.',
   );
 
   requireRule(
@@ -629,19 +646,15 @@ export function apply(
     'Player hand missing.',
   );
 
-  const name = room.players[uid];
-
-  // A player cannot discard or draw
-  // their way out of an unresolved UNO window.
-  // Other players remain free to play.
-
   requireRule(
     !room.unoWindows[uid],
     'Call UNO or wait for your UNO penalty.',
   );
 
+  const name = room.players[uid];
+
   // ========================================
-  // AUTOMATIC TIMEOUT / FORCED RESPONSE
+  // AUTOMATIC ACTION
   // ========================================
 
   if (action.kind === 'auto') {
@@ -659,15 +672,10 @@ export function apply(
       'Automatic action is not available.',
     );
 
-    if (
-      room.phase === 'drawn' ||
-      room.pending?.kind === 'skip' ||
-      room.pending?.kind === 'reverse'
-    ) {
-      action = { kind: 'pass' };
-    } else {
-      action = { kind: 'draw' };
-    }
+    action =
+      room.phase === 'drawn'
+        ? { kind: 'pass' }
+        : { kind: 'draw' };
   } else {
     requireRule(
       now < room.turnDeadline,
@@ -676,7 +684,7 @@ export function apply(
   }
 
   // ========================================
-  // PLAY A CARD
+  // PLAY CARD
   // ========================================
 
   if (action.kind === 'play') {
@@ -694,7 +702,9 @@ export function apply(
     if (card.color === 'wild') {
       requireRule(
         typeof action.color === 'string' &&
-          COLORS.includes(action.color as Color),
+          COLORS.includes(
+            action.color as Color,
+          ),
         'Choose a valid color.',
       );
 
@@ -716,7 +726,6 @@ export function apply(
 
     room.topCard = card;
     room.activeColor = activeColor;
-
     room.lastPlayedBy = uid;
 
     room.pending = null;
@@ -730,26 +739,31 @@ export function apply(
     clearUno(room, uid);
 
     // ======================================
-    // WIN
+    // WINNER
     // ======================================
 
     if (newHand.length === 0) {
       room.status = 'finished';
       room.winnerId = uid;
       room.currentPlayerId = null;
+
       room.turnDeadline = 0;
       room.unoWindows = {};
 
-      room.lastAction = `${name} won the match!`;
+      room.lastAction =
+        `${name} won the match!`;
 
       event(room, 'win', uid, card);
 
       sync(room, hands);
+
       return;
     }
 
+    let nextPlayerId = next(room, uid);
+
     // ======================================
-    // DRAW STACKING
+    // +2 AND +4 STACKING
     // ======================================
 
     if (
@@ -766,32 +780,43 @@ export function apply(
     }
 
     // ======================================
-    // SKIP COUNTER
+    // IMMEDIATE SKIP
     // ======================================
 
     else if (card.value === 'skip') {
-      room.pending = {
-        kind: 'skip',
-        amount: 0,
-      };
+      const skippedPlayerId =
+        next(room, uid);
+
+      nextPlayerId =
+        next(room, uid, 2);
+
+      room.lastAction =
+        `${name} played Skip. ` +
+        `${room.players[skippedPlayerId]} was skipped!`;
     }
 
     // ======================================
-    // REVERSE
+    // IMMEDIATE REVERSE
     // ======================================
 
     else if (card.value === 'reverse') {
       room.direction *= -1;
 
-      if (room.playerOrder.length === 2) {
-        room.pending = {
-          kind: 'reverse',
-          amount: 0,
-        };
-      }
+      nextPlayerId =
+        room.playerOrder.length === 2
+          ? uid
+          : next(room, uid);
+
+      room.lastAction =
+        `${name} reversed the direction to ` +
+        (
+          room.direction === 1
+            ? 'clockwise.'
+            : 'counterclockwise.'
+        );
     }
 
-    room.currentPlayerId = next(room, uid);
+    room.currentPlayerId = nextPlayerId;
 
     room.phase = room.pending
       ? 'response'
@@ -800,8 +825,8 @@ export function apply(
     room.turnDeadline =
       now + TURN_DURATION_MS;
 
-    // UNO is available only after playing
-    // the second-last card.
+    // UNO becomes available only after
+    // playing the second-last card.
 
     if (newHand.length === 1) {
       openUno(room, uid, now);
@@ -809,7 +834,7 @@ export function apply(
   }
 
   // ========================================
-  // DRAW CARD
+  // DRAW
   // ========================================
 
   else if (action.kind === 'draw') {
@@ -819,12 +844,6 @@ export function apply(
     );
 
     if (room.pending) {
-      requireRule(
-        room.pending.kind === 'draw2' ||
-          room.pending.kind === 'wild4',
-        'Accept the skip instead.',
-      );
-
       const cards = take(
         state,
         room.pending.amount,
@@ -874,9 +893,6 @@ export function apply(
 
         room.phase = 'drawn';
 
-        // Give a short opportunity to decide
-        // whether to play the newly drawn card.
-
         room.turnDeadline = Math.max(
           room.turnDeadline,
           now + 5000,
@@ -895,21 +911,17 @@ export function apply(
   }
 
   // ========================================
-  // PASS TURN
+  // PASS AFTER DRAWING
   // ========================================
 
   else if (action.kind === 'pass') {
     requireRule(
-      room.phase === 'drawn' ||
-        room.pending?.kind === 'skip' ||
-        room.pending?.kind === 'reverse',
+      room.phase === 'drawn',
       'You cannot pass now.',
     );
 
     room.lastAction =
-      room.phase === 'drawn'
-        ? `${name} kept the drawn card.`
-        : `${name} was skipped.`;
+      `${name} kept the drawn card.`;
 
     event(room, 'pass', uid);
 

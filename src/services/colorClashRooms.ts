@@ -48,8 +48,15 @@ export type UnoWindow = {
   deadline: number;
 };
 
+export type DepartedPlayer = {
+  name: string;
+  quit: boolean;
+  cardsRemaining: number;
+};
+
 export type GameEvent = {
   id: string;
+
   kind:
     | 'start'
     | 'play'
@@ -72,6 +79,13 @@ export type ColorClashRoom = {
   players: Record<string, string>;
 
   playerOrder?: string[];
+  seatOrder?: string[];
+
+  departedPlayers?: Record<
+    string,
+    DepartedPlayer
+  >;
+
   currentPlayerId?: string | null;
 
   direction?: number;
@@ -91,7 +105,7 @@ export type ColorClashRoom = {
   phase?: 'normal' | 'drawn' | 'response';
 
   pending?: {
-    kind: 'draw2' | 'wild4' | 'skip' | 'reverse';
+    kind: 'draw2' | 'wild4';
     amount: number;
   } | null;
 
@@ -114,7 +128,7 @@ export type PrivateHand = {
 };
 
 // ==========================================
-// AUTHENTICATION RECOVERY
+// AUTHENTICATION
 // ==========================================
 
 let guestPromise: Promise<User> | null = null;
@@ -154,7 +168,8 @@ export async function ensureGuest(): Promise<User> {
       }
     }
 
-    const result = await signInAnonymously(auth);
+    const result =
+      await signInAnonymously(auth);
 
     await result.user.getIdToken();
 
@@ -167,9 +182,6 @@ export async function ensureGuest(): Promise<User> {
     guestPromise = null;
   }
 }
-
-// Existing match authentication.
-// Does not silently replace the player's identity.
 
 export async function getMatchUser(): Promise<User> {
   await auth.authStateReady();
@@ -250,12 +262,15 @@ function generateCode() {
 export async function createColorClashRoom(
   playerName: string,
 ): Promise<string> {
-  const name = validateName(playerName);
+  const name =
+    validateName(playerName);
 
-  const user = await ensureGuest();
+  const user =
+    await ensureGuest();
 
   for (let i = 0; i < 5; i++) {
     const code = generateCode();
+
     const ref = roomRef(code);
 
     const created = await runTransaction(
@@ -290,20 +305,25 @@ export async function createColorClashRoom(
 }
 
 // ==========================================
-// JOIN ROOM
+// JOIN OR RECONNECT
 // ==========================================
 
 export async function joinColorClashRoom(
   codeInput: string,
   playerName: string,
 ): Promise<string> {
-  const code = validateCode(codeInput);
-  const name = validateName(playerName);
+  const code =
+    validateCode(codeInput);
 
-  const user = await ensureGuest();
+  const name =
+    validateName(playerName);
+
+  const user =
+    await ensureGuest();
 
   await runTransaction(db, async tx => {
     const ref = roomRef(code);
+
     const snap = await tx.get(ref);
 
     if (!snap.exists()) {
@@ -312,6 +332,8 @@ export async function joinColorClashRoom(
 
     const room =
       snap.data() as ColorClashRoom;
+
+    // Reconnect existing room members.
 
     if (
       Object.prototype.hasOwnProperty.call(
@@ -322,9 +344,12 @@ export async function joinColorClashRoom(
       return;
     }
 
+    // Departed players cannot rejoin
+    // a match after it has started.
+
     if (room.status !== 'lobby') {
       throw new Error(
-        'Match already started.',
+        'This match has already started.',
       );
     }
 
@@ -347,7 +372,7 @@ export async function joinColorClashRoom(
 }
 
 // ==========================================
-// PUBLIC MATCH SUBSCRIPTION
+// PUBLIC ROOM SUBSCRIPTION
 // ==========================================
 
 export function subscribeToColorClashRoom(
@@ -369,7 +394,8 @@ export function subscribeToColorClashRoom(
           : null,
       ),
 
-    error => onError(error.message),
+    error =>
+      onError(error.message),
   );
 }
 
@@ -402,6 +428,7 @@ export function subscribeToMyColorClashHand(
     snap => {
       if (!snap.exists()) {
         onUpdate([], -1, null, -1);
+
         return;
       }
 
@@ -413,17 +440,20 @@ export function subscribeToMyColorClashHand(
           : [],
 
         data.revision ?? -1,
+
         data.drawnCardId ?? null,
+
         data.matchNumber ?? -1,
       );
     },
 
-    error => onError(error.message),
+    error =>
+      onError(error.message),
   );
 }
 
 // ==========================================
-// CALLABLE RESPONSE
+// SERVER REQUEST
 // ==========================================
 
 type CallResult = {
@@ -432,10 +462,6 @@ type CallResult = {
   winner?: boolean;
   unoWindow?: UnoWindow | null;
 };
-
-// ==========================================
-// OPTIMIZED SERVER CALL
-// ==========================================
 
 async function call(
   name: string,
@@ -446,11 +472,16 @@ async function call(
   const callable = httpsCallable<
     Record<string, unknown>,
     CallResult
-  >(functions, name, {
-    timeout: 15000,
-  });
+  >(
+    functions,
+    name,
+    {
+      timeout: 15000,
+    },
+  );
 
-  const result = await callable(data);
+  const result =
+    await callable(data);
 
   if (!result.data.success) {
     throw new Error('Action failed.');
@@ -460,7 +491,7 @@ async function call(
 }
 
 // ==========================================
-// START GAME
+// START MATCH
 // ==========================================
 
 export const startColorClashGame = (
@@ -492,7 +523,7 @@ export const playColorClashGameCard = (
   });
 
 // ==========================================
-// DRAW
+// DRAW CARD
 // ==========================================
 
 export const drawColorClashGameCard = (
@@ -505,7 +536,7 @@ export const drawColorClashGameCard = (
   });
 
 // ==========================================
-// PASS
+// PASS AFTER DRAWING
 // ==========================================
 
 export const passColorClashGameTurn = (
@@ -531,7 +562,7 @@ export const autoColorClashGameTurn = (
   });
 
 // ==========================================
-// CALL UNO
+// ANNOUNCE UNO
 // ==========================================
 
 export const callColorClashGameUno = (
