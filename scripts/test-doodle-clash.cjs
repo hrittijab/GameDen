@@ -466,38 +466,39 @@ async function main() {
   pass('Direct activity writes are blocked');
 
   await denied(() =>
-    call(outsider, 'reactDoodleClash', {
+    call(outsider, 'sendDoodleClashReaction', {
       matchNumber,
-      reaction: '🔥',
+      emoji: '🔥',
     })
   );
 
   pass('Nonmembers cannot send reactions');
 
-  await call(guest, 'reactDoodleClash', {
+  await call(guest, 'sendDoodleClashReaction', {
     matchNumber,
-    reaction: '🔥',
+    emoji: '🔥',
   });
 
   const reacted = (
-    await getDocFromServer(activityRef(host))
+    await getDocFromServer(roomRef(host))
   ).data();
 
-  assert.ok(
-    reacted.events.some(
-      event =>
-        event.kind === 'reaction' &&
-        event.text === '🔥' &&
-        event.uid === guest.uid
-    )
+  assert.equal(
+    reacted.sharedReactions[guest.uid].emoji,
+    '🔥'
+  );
+
+  assert.equal(
+    reacted.sharedReactions[guest.uid].matchNumber,
+    matchNumber
   );
 
   pass('Player reactions reach other members');
 
   await assert.rejects(() =>
-    call(guest, 'reactDoodleClash', {
+    call(guest, 'sendDoodleClashReaction', {
       matchNumber,
-      reaction: '👏',
+      emoji: '👏',
     }),
     error =>
       String(error.code).includes(
@@ -601,4 +602,5 @@ main()
       })
     );
   });
+
 

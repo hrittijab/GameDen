@@ -64,6 +64,19 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+            onPress={() =>
+              router.push('/settings' as Href)
+            }
+            style={s.settingsButton}
+          >
+            <Text style={s.settingsIcon}>
+              ⚙
+            </Text>
+          </Pressable>
         </View>
 
         {/* WELCOME */}
@@ -183,6 +196,27 @@ const s = StyleSheet.create({
 
   header: {
     marginBottom: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  settingsButton: {
+    width: 44,
+    height: 44,
+    backgroundColor: '#303550',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF15',
+  },
+
+  settingsIcon: {
+    color: '#A5E1EB',
+    fontSize: 26,
+    fontWeight: '800',
   },
 
   brand: {
@@ -325,3 +359,4 @@ const s = StyleSheet.create({
     marginTop: 30,
   },
 });
+

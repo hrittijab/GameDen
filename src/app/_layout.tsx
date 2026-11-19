@@ -1,5 +1,15 @@
 import { Stack } from 'expo-router';
 
+import {
+  AudioProvider,
+} from '../audio/AudioProvider';
+
 export default function RootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <AudioProvider>
+      <Stack screenOptions={{
+        headerShown: false,
+      }} />
+    </AudioProvider>
+  );
 }

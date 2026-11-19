@@ -66,6 +66,12 @@ import {
 // CONFIGURATION
 // ==========================================
 
+import SoundButton from '../../audio/SoundButton';
+
+import {
+  useCountdownAudio,
+} from '../../audio/useCountdownAudio';
+
 import ReactionBar from '../../multiplayer/ReactionBar';
 import ReactionBubble from '../../multiplayer/ReactionBubble';
 
@@ -335,6 +341,8 @@ const Countdown = memo(function Countdown({
 }) {
   const [now, setNow] =
     useState(Date.now());
+
+  useCountdownAudio(deadline);
 
   useEffect(() => {
     setNow(Date.now());
@@ -847,8 +855,7 @@ export default function ColorClashGame() {
   const [error, setError] =
     useState('');
 
-  const [soundEnabled, setSoundEnabled] =
-    useState(true);
+
 
   const [confirmQuit, setConfirmQuit] =
     useState(false);
@@ -904,7 +911,7 @@ export default function ColorClashGame() {
   latestHand.current = handState;
 
   const { sound, feedback } =
-    useColorClashSounds(soundEnabled);
+    useColorClashSounds();
 
   const hand =
     handState.cards;
@@ -1315,7 +1322,11 @@ export default function ColorClashGame() {
     else if (
       gameEvent.kind === 'win'
     ) {
-      sound('win');
+      if (room?.winnerId === uid) {
+        feedback('win');
+      } else {
+        sound('defeat');
+      }
     }
   }, [
     room?.lastEvent?.id,
@@ -2114,19 +2125,7 @@ export default function ColorClashGame() {
           Color Clash
         </Text>
 
-        <TouchableOpacity
-          onPress={() =>
-            setSoundEnabled(
-              enabled => !enabled,
-            )
-          }
-        >
-          <Text style={s.soundIcon}>
-            {soundEnabled
-              ? '🔊'
-              : '🔇'}
-          </Text>
-        </TouchableOpacity>
+        <SoundButton accent="#A5E1EB" />
       </View>
 
       {/* QUIT CONFIRMATION */}
@@ -3585,6 +3584,7 @@ const s = StyleSheet.create({
     borderRadius: 2,
   },
 });
+
 
 
 

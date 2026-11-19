@@ -56,6 +56,7 @@ export const CATEGORIES: GameCategory[] = [
 export const GAMES: Game[] = [
   {
     id: 'word-clash',
+    image: require('../../assets/games/word-clash.webp'),
     name: 'Word Clash',
     description: 'Race to submit unique words before time runs out.',
     category: 'multiplayer',
@@ -156,5 +157,6 @@ export function getAvailableGameCount(id: CategoryId) {
     game => game.available,
   ).length;
 }
+
 
 

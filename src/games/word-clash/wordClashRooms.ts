@@ -102,16 +102,5 @@ export function maintainMatch(
   );
 }
 
-export function sendReaction(
-  code: string,
-  room: WordRoom,
-  emoji: string,
-) {
-  return callServer(
-    'reactWordClash',
-    {
-      ...roundData(code, room),
-      emoji,
-    },
-  );
-}
+
+

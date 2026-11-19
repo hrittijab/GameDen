@@ -65,9 +65,7 @@ export {
   configureDoodleClashRoom,
 } from './doodle-clash/configureRoom';
 
-export {
-  reactDoodleClash,
-} from './doodle-clash/activity';
+
 
 export {
   startWordClashMatch,
@@ -91,12 +89,11 @@ export {
   maintainWordClashMatch,
 } from './word-clash/maintenance';
 
-export {
-  reactWordClash,
-} from './word-clash/reactions';
+
 
 export {
   sendColorClashReaction,
   sendDoodleClashReaction,
   sendWordClashReaction,
 } from './reactions';
+

@@ -361,7 +361,7 @@ async function main() {
   pass('Mismatched round requests are rejected');
 
   await denied(() =>
-    call(outsider, 'reactWordClash', {
+    call(outsider, 'sendWordClashReaction', {
       ...roundData,
       emoji: '🔥',
     })
@@ -369,20 +369,20 @@ async function main() {
 
   pass('Outsiders cannot react');
 
-  await call(guest, 'reactWordClash', {
+  await call(guest, 'sendWordClashReaction', {
     ...roundData,
     emoji: '🔥',
   });
 
   assert.equal(
-    (await room(host)).reactions[guest.uid].emoji,
+    (await room(host)).sharedReactions[guest.uid].emoji,
     '🔥'
   );
 
   pass('Reactions synchronize between members');
 
   await assert.rejects(() =>
-    call(guest, 'reactWordClash', {
+    call(guest, 'sendWordClashReaction', {
       ...roundData,
       emoji: '👏',
     }),
@@ -451,3 +451,4 @@ main()
       })
     );
   });
+

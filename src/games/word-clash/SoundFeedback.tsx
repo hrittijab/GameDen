@@ -4,54 +4,44 @@ import {
 } from 'react';
 
 import {
-  useAudioPlayer,
-} from 'expo-audio';
+  useGameAudio,
+} from '../../audio/useGameAudio';
 
-import type { WordRoom } from './types';
+import {
+  useCountdownAudio,
+} from '../../audio/useCountdownAudio';
 
-type Player = ReturnType<typeof useAudioPlayer>;
-
-async function play(player: Player) {
-  try {
-    await player.seekTo(0);
-    player.play();
-  } catch {
-    // Audio failures must not interrupt gameplay.
-  }
-}
+import type {
+  WordRoom,
+} from './types';
 
 export default function SoundFeedback({
   room,
   uid,
-  enabled,
 }: {
   room: WordRoom;
   uid: string;
-  enabled: boolean;
 }) {
-  const roundSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/round.wav'),
-  );
+  const { play, feedback } = useGameAudio();
 
-  const submitSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/correct.wav'),
-  );
-
-  const resultsSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/results.wav'),
-  );
-
-  const winSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/win.wav'),
+  useCountdownAudio(
+    room.deadline,
+    room.status === 'playing' &&
+      (
+        room.phase === 'typing' ||
+        room.phase === 'countdown'
+      ),
   );
 
   const submitted =
     room.submittedIds?.includes(uid) ?? false;
 
+  const identity =
+    `${room.matchNumber}-${room.roundNumber}`;
+
   const previous = useRef({
+    identity,
     phase: '',
-    matchNumber: 0,
-    roundNumber: 0,
     submitted: false,
   });
 
@@ -59,50 +49,62 @@ export default function SoundFeedback({
     const old = previous.current;
 
     const newRound =
-      old.matchNumber !== room.matchNumber ||
-      old.roundNumber !== room.roundNumber;
+      old.identity !== identity;
 
     previous.current = {
+      identity,
       phase: room.phase,
-      matchNumber: room.matchNumber,
-      roundNumber: room.roundNumber,
       submitted,
     };
-
-    if (!enabled) return;
 
     if (
       room.phase === 'finished' &&
       old.phase !== 'finished'
     ) {
-      void play(winSound);
+      if (room.winnerIds?.includes(uid)) {
+        feedback('win', 'success');
+      } else {
+        play('defeat');
+      }
+
     } else if (
       room.phase === 'results' &&
       (old.phase !== 'results' || newRound)
     ) {
-      void play(resultsSound);
+      const result = room.results?.find(
+        item => item.uid === uid,
+      );
+
+      if (result?.outcome === 'duplicate') {
+        feedback('duplicate', 'warning');
+      } else if (result?.outcome === 'valid') {
+        feedback('correct', 'success');
+      } else {
+        play('results');
+      }
+
     } else if (
       room.phase === 'typing' &&
       (old.phase !== 'typing' || newRound)
     ) {
-      void play(roundSound);
+      play('round');
+
     } else if (
       room.phase === 'typing' &&
       submitted &&
       !old.submitted
     ) {
-      void play(submitSound);
+      feedback('tap');
     }
   }, [
+    identity,
     room.phase,
-    room.matchNumber,
-    room.roundNumber,
+    room.winnerIds,
+    room.results,
     submitted,
-    enabled,
-    roundSound,
-    submitSound,
-    resultsSound,
-    winSound,
+    uid,
+    play,
+    feedback,
   ]);
 
   return null;

@@ -61,6 +61,7 @@ import {
 } from './types';
 
 import SoundFeedback from './SoundFeedback';
+import SoundButton from '../../audio/SoundButton';
 import ReactionBar from '../../multiplayer/ReactionBar';
 import ReactionStrip from '../../multiplayer/ReactionStrip';
 import ReactionBubble from '../../multiplayer/ReactionBubble';
@@ -141,8 +142,7 @@ function Match({
   const lock = useRef(false);
   const leaving = useRef(false);
 
-  const [soundEnabled, setSoundEnabled] =
-    useState(true);
+
 
   const member = !!(
     room &&
@@ -392,7 +392,7 @@ function Match({
       <SoundFeedback
         room={room}
         uid={uid}
-        enabled={soundEnabled}
+
       />
 
       <View style={s.header}>
@@ -406,22 +406,7 @@ function Match({
           </Text>
         </View>
 
-        <Pressable
-          style={s.soundButton}
-          onPress={() =>
-            setSoundEnabled(value => !value)
-          }
-          accessibilityRole="button"
-          accessibilityLabel={
-            soundEnabled
-              ? 'Mute sound'
-              : 'Enable sound'
-          }
-        >
-          <Text style={s.soundText}>
-            {soundEnabled ? 'Sound on' : 'Muted'}
-          </Text>
-        </Pressable>
+        <SoundButton accent="#FFD071" />
 
         <Pressable
           disabled={busy}
@@ -1401,6 +1386,7 @@ const s = StyleSheet.create({
     fontWeight: '900',
   },
 });
+
 
 
 

@@ -21,6 +21,14 @@ import {
   type ReactionRoom,
 } from './reactions';
 
+import {
+  useReactionAudio,
+} from './useReactionAudio';
+
+import {
+  useGameAudio,
+} from '../audio/useGameAudio';
+
 export default function ReactionBar({
   game,
   code,
@@ -50,6 +58,10 @@ export default function ReactionBar({
   >(null);
 
   const enabled = reactionsEnabled(room);
+
+  const { play } = useGameAudio();
+
+  useReactionAudio(room, code);
 
   useEffect(() => {
     alive.current = true;
@@ -127,7 +139,10 @@ export default function ReactionBar({
         accessibilityRole="button"
         accessibilityLabel="Send emoji reaction"
         disabled={busy || disabled}
-        onPress={() => setOpen(true)}
+        onPress={() => {
+          play('tap');
+          setOpen(true);
+        }}
         style={[
           s.trigger,
           { borderColor: accent },
@@ -332,4 +347,5 @@ const s = StyleSheet.create({
     fontSize: 12,
   },
 });
+
 

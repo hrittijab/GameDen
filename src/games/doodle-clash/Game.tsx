@@ -61,6 +61,7 @@ import { remainingInk } from './drawingLimits';
 import DrawingTools from './DrawingTools';
 import RoundPanel from './RoundPanel';
 import SoundFeedback from './SoundFeedback';
+import SoundButton from '../../audio/SoundButton';
 
 import ReactionBar from '../../multiplayer/ReactionBar';
 import ReactionStrip from '../../multiplayer/ReactionStrip';
@@ -150,8 +151,7 @@ function Match({
   const [touching, setTouching] =
     useState(false);
 
-  const [soundEnabled, setSoundEnabled] =
-    useState(true);
+
 
   const leaving = useRef(false);
   const lock = useRef(false);
@@ -475,7 +475,7 @@ function Match({
       <SoundFeedback
         room={room}
         uid={uid}
-        enabled={soundEnabled}
+
       />
 
       <View style={s.header}>
@@ -489,22 +489,7 @@ function Match({
           </Text>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            soundEnabled
-              ? 'Mute game sounds'
-              : 'Enable game sounds'
-          }
-          onPress={() =>
-            setSoundEnabled(value => !value)
-          }
-          style={s.soundButton}
-        >
-          <Text style={s.buttonText}>
-            {soundEnabled ? 'Sound on' : 'Muted'}
-          </Text>
-        </Pressable>
+        <SoundButton accent="#A5E1EB" />
 
         <Pressable
           disabled={busy}
@@ -889,6 +874,7 @@ const s = StyleSheet.create({
     fontSize: 13,
   },
 });
+
 
 
 

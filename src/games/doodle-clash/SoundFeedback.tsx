@@ -4,107 +4,102 @@ import {
 } from 'react';
 
 import {
-  useAudioPlayer,
-} from 'expo-audio';
+  useGameAudio,
+} from '../../audio/useGameAudio';
+
+import {
+  useCountdownAudio,
+} from '../../audio/useCountdownAudio';
 
 import type {
   DoodleRoom,
 } from './doodleClashRooms';
 
-type Props = {
-  room: DoodleRoom;
-  uid: string;
-  enabled: boolean;
-};
-
-type Player = ReturnType<typeof useAudioPlayer>;
-
-async function play(player: Player) {
-  try {
-    await player.seekTo(0);
-    player.play();
-  } catch {
-    // Audio must never interrupt gameplay.
-  }
-}
-
 export default function SoundFeedback({
   room,
   uid,
-  enabled,
-}: Props) {
-  const roundSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/round.wav'),
-  );
+}: {
+  room: DoodleRoom;
+  uid: string;
+}) {
+  const { play, feedback } = useGameAudio();
 
-  const correctSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/correct.wav'),
+  useCountdownAudio(
+    room.deadline,
+    room.status === 'playing' &&
+      room.phase === 'drawing',
   );
-
-  const resultSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/results.wav'),
-  );
-
-  const winSound = useAudioPlayer(
-    require('../../../assets/doodle-clash/win.wav'),
-  );
-
-  const previous = useRef({
-    phase: '',
-    matchNumber: 0,
-    guessed: false,
-  });
 
   const guessed =
     room.guessedIds?.includes(uid) ?? false;
 
+  const identity =
+    `${room.matchNumber}-${room.roundNumber}`;
+
+  const previous = useRef({
+    identity,
+    phase: '',
+    guessed: false,
+  });
+
   useEffect(() => {
     const old = previous.current;
 
+    const newRound =
+      old.identity !== identity;
+
     previous.current = {
+      identity,
       phase: room.phase,
-      matchNumber: room.matchNumber,
       guessed,
     };
-
-    if (!enabled) return;
 
     if (
       room.phase === 'finished' &&
       old.phase !== 'finished'
     ) {
-      void play(winSound);
+      const scores = Object.keys(room.players)
+        .map(id => room.scores?.[id] ?? 0);
+
+      const highest = Math.max(0, ...scores);
+
+      const won =
+        scores.length >= 2 &&
+        (room.scores?.[uid] ?? 0) === highest;
+
+      if (won) {
+        feedback('win', 'success');
+      } else {
+        play('defeat');
+      }
+
     } else if (
       guessed &&
-      (
-        !old.guessed ||
-        old.matchNumber !== room.matchNumber
-      )
+      (!old.guessed || newRound)
     ) {
-      void play(correctSound);
+      feedback('correct', 'success');
+
     } else if (
       room.phase === 'results' &&
-      old.phase !== 'results'
+      (old.phase !== 'results' || newRound)
     ) {
-      void play(resultSound);
+      play('results');
+
     } else if (
       room.phase === 'drawing' &&
-      (
-        old.phase !== 'drawing' ||
-        old.matchNumber !== room.matchNumber
-      )
+      (old.phase !== 'drawing' || newRound)
     ) {
-      void play(roundSound);
+      play('round');
     }
   }, [
+    identity,
     room.phase,
-    room.matchNumber,
+    room.players,
+    room.scores,
     guessed,
-    enabled,
-    roundSound,
-    correctSound,
-    resultSound,
-    winSound,
+    uid,
+    play,
+    feedback,
   ]);
 
   return null;
