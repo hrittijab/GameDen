@@ -23,7 +23,14 @@ import {
   type DrawingTool,
 } from './types';
 
+import {
+  strokeDistance,
+} from './drawingLimits';
+
 type Props = {
+  hideDrawing?: boolean;
+  commitOnCancel?: boolean;
+  maxDistance?: number;
   strokes: Stroke[];
   color: string;
   brushSize: number;
@@ -79,6 +86,9 @@ export default function Canvas({
   canDraw,
   onStrokeComplete,
   onStrokeProgress,
+  hideDrawing = false,
+  commitOnCancel = false,
+  maxDistance,
 }: Props) {
   const [size, setSize] = useState({
     width: 0,
@@ -135,7 +145,13 @@ export default function Canvas({
   function begin(
     event: GestureResponderEvent,
   ) {
-    if (!canDraw) return;
+    if (
+      !canDraw ||
+      (
+        maxDistance !== undefined &&
+        maxDistance < 1
+      )
+    ) return;
 
     sequence.current += 1;
 
@@ -175,6 +191,17 @@ export default function Canvas({
         point.x - last.x,
         point.y - last.y,
       ) < 2
+    ) {
+      return;
+    }
+
+    if (
+      maxDistance !== undefined &&
+      strokeDistance(previous) +
+        Math.hypot(
+          point.x - last.x,
+          point.y - last.y,
+        ) > maxDistance
     ) {
       return;
     }
@@ -219,6 +246,10 @@ export default function Canvas({
   }
 
   function cancel() {
+    if (commitOnCancel && active.current) {
+      finish();
+      return;
+    }
     active.current = null;
     setDraft(null);
   }
@@ -230,7 +261,10 @@ export default function Canvas({
     >
       <View
         pointerEvents="none"
-        style={StyleSheet.absoluteFill}
+        style={[
+          StyleSheet.absoluteFill,
+          { opacity: hideDrawing ? 0 : 1 },
+        ]}
       >
         <Svg
           width="100%"
@@ -275,3 +309,5 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+
+

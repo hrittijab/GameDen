@@ -28,6 +28,9 @@ import {
   type WordOption,
 } from './roundService';
 
+import ActivityPanel from './ActivityPanel';
+import { MODES } from './settings';
+
 type Props = {
   code: string;
   room: DoodleRoom;
@@ -104,6 +107,11 @@ export default function RoundPanel({
     room.status === 'finished';
 
   const names = Object.keys(room.players);
+
+  const currentMode = MODES.find(
+    item => item.value ===
+      (room.roundMode ?? 'classic'),
+  );
 
   const ranking = [...names].sort(
     (a, b) =>
@@ -324,6 +332,10 @@ export default function RoundPanel({
             </Text>
 
             <Text style={s.small}>
+              {currentMode?.label ?? 'Classic'}
+            </Text>
+
+            <Text style={s.small}>
               {room.artistId
                 ? room.players[room.artistId]
                 : 'No artist'}
@@ -435,8 +447,10 @@ export default function RoundPanel({
           <Text style={s.secret}>
             {isArtist
               ? answer ?? 'Loading word...'
-              : (room.hint ?? '')
-                  .replace(/_/g, '_ ')}
+              : room.roundMode === 'nohint'
+                ? 'No hints available'
+                : (room.hint ?? '')
+                    .replace(/_/g, '_ ')}
           </Text>
 
           {isArtist && !loadingWord && !answer && (
@@ -456,6 +470,12 @@ export default function RoundPanel({
             {everyoneGuessed} / {Math.max(0, names.length - 1)}
             {' players guessed correctly'}
           </Text>
+
+          {room.roundMode !== 'classic' && (
+            <Text style={s.small}>
+              {currentMode?.description}
+            </Text>
+          )}
 
           {children}
 
@@ -556,6 +576,14 @@ export default function RoundPanel({
             {highestScore} points
           </Text>
         </View>
+      )}
+
+      {!finished && (
+        <ActivityPanel
+          key={room.matchNumber}
+          code={code}
+          room={room}
+        />
       )}
 
       <View style={s.panel}>
@@ -774,4 +802,5 @@ const s = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
 

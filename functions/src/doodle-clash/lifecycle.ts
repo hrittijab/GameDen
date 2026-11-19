@@ -42,6 +42,7 @@ export async function handleDeparture(
   if (!remainingIds.length) {
     tx.delete(drawingRef);
     tx.delete(roomRef.collection('preview').doc('current'));
+    tx.delete(roomRef.collection('activity').doc('current'));
     tx.delete(secretRef);
     tx.delete(presenceRef);
     tx.delete(roomRef);
@@ -157,4 +158,5 @@ export const leaveDoodleClashRoom =
 
 export const kickDoodleClashPlayer =
   lifecycle.kick;
+
 

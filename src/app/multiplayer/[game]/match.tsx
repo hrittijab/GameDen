@@ -1,3 +1,4 @@
+import WordClashGame from '../../../games/word-clash/Game';
 import DoodleClashGame from '../../../games/doodle-clash/Game';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { View, Text, Button } from 'react-native';
@@ -7,6 +8,7 @@ import ColorClashGame from '../../../games/color-clash/Game';
 const GAMES = {
   'color-clash': ColorClashGame,
   'doodle-clash': DoodleClashGame,
+  'word-clash': WordClashGame,
 };
 
 export default function MultiplayerMatchRoute() {
@@ -46,4 +48,5 @@ export default function MultiplayerMatchRoute() {
 
   return <Game key={game} />;
 }
+
 

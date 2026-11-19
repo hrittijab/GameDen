@@ -1,3 +1,4 @@
+import { WORD_CLASH_CONFIG } from '../../../games/word-clash/config';
 import { DOODLE_CLASH_CONFIG } from '../../../games/doodle-clash/config';
 import {
   useLocalSearchParams,
@@ -24,6 +25,7 @@ const GAMES: Record<
 > = {
   'color-clash': COLOR_CLASH_CONFIG,
   'doodle-clash': DOODLE_CLASH_CONFIG,
+  'word-clash': WORD_CLASH_CONFIG,
 };
 
 export default function MultiplayerRoute() {
@@ -70,4 +72,5 @@ export default function MultiplayerRoute() {
     />
   );
 }
+
 

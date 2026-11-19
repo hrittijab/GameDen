@@ -26,6 +26,11 @@ import type {
   Stroke,
 } from './types';
 
+import type {
+  MatchSettings,
+  GameMode,
+} from './settings';
+
 export type DoodleRoom = MultiplayerRoom & {
   artistId: string | null;
   playerOrder: string[];
@@ -34,6 +39,9 @@ export type DoodleRoom = MultiplayerRoom & {
   phase: 'choosing' | 'drawing' | 'results' | 'finished';
 
   deadline: number;
+  matchSettings?: MatchSettings;
+  roundMode?: GameMode;
+  drawingMs?: number;
   roundNumber: number;
   totalRounds: number;
 
@@ -129,4 +137,5 @@ export async function updateDrawing(
 
   return result.drawing;
 }
+
 

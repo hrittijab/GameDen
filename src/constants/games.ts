@@ -54,6 +54,16 @@ export const CATEGORIES: GameCategory[] = [
 ];
 
 export const GAMES: Game[] = [
+  {
+    id: 'word-clash',
+    name: 'Word Clash',
+    description: 'Race to submit unique words before time runs out.',
+    category: 'multiplayer',
+    mode: 'online',
+    players: '2-12 players',
+    color: '#594378',
+    available: true,
+  },
 
   {
     id: 'doodle-clash',
@@ -146,4 +156,5 @@ export function getAvailableGameCount(id: CategoryId) {
     game => game.available,
   ).length;
 }
+
 

@@ -193,6 +193,61 @@ async function main() {
 
   pass('Only host can start a match');
 
+  await denied(() =>
+    call(guest, 'configureDoodleClashRoom', {
+      settings: {
+        drawingSeconds: 120,
+      },
+    })
+  );
+
+  pass('Guests cannot change room settings');
+
+  await denied(() =>
+    updateDoc(roomRef(guest), {
+      matchSettings: {
+        mode: 'blind',
+      },
+    })
+  );
+
+  pass('Direct client settings writes are blocked');
+
+  await call(host, 'configureDoodleClashRoom', {
+    settings: {
+      mode: 'ink',
+      drawingSeconds: 120,
+      difficulty: 'easy',
+    },
+  });
+
+  await call(host, 'configureDoodleClashRoom', {
+    settings: {
+      hints: false,
+    },
+  });
+
+  const configured = (
+    await getDocFromServer(roomRef(guest))
+  ).data();
+
+  assert.equal(
+    configured.matchSettings.mode,
+    'ink'
+  );
+
+  assert.equal(
+    configured.matchSettings.drawingSeconds,
+    120
+  );
+
+  assert.equal(
+    configured.matchSettings.hints,
+    false
+  );
+
+  pass('Host settings synchronize without losing previous changes');
+
   await call(host, 'startDoodleClashMatch');
 
   const initial = (
@@ -202,6 +257,18 @@ async function main() {
   assert.equal(initial.artistId, host.uid);
   assert.equal(initial.phase, 'choosing');
   assert.equal(initial.totalRounds, 12);
+  assert.equal(initial.roundMode, 'ink');
+  assert.equal(initial.drawingMs, 120000);
+
+  await assert.rejects(() =>
+    call(host, 'configureDoodleClashRoom', {
+      settings: {
+        mode: 'classic',
+      },
+    })
+  );
+
+  pass('Settings are locked during an active match');
 
   pass('Adaptive rounds and artist assignment work');
 
@@ -214,6 +281,14 @@ async function main() {
   );
 
   assert.equal(words.choices.length, 3);
+
+  assert.ok(
+    words.choices.every(
+      item => item.difficulty === 'easy'
+    )
+  );
+
+  pass('Word selection respects custom difficulty');
 
   pass('Artist receives private word choices');
 
@@ -360,6 +435,80 @@ async function main() {
 
   await assert.rejects(() =>
     call(host, 'updateDoodleClashDrawing', {
+      matchNumber,
+      revision: 1,
+      action: 'clear',
+    })
+  );
+
+  pass('Restricted drawing actions are rejected by the server');
+
+  const activityRef = client => doc(
+    client.db,
+    'doodleClashRooms',
+    code,
+    'activity',
+    'current'
+  );
+
+  await denied(() =>
+    getDocFromServer(activityRef(outsider))
+  );
+
+  pass('Nonmembers cannot read the activity feed');
+
+  await denied(() =>
+    setDoc(activityRef(guest), {
+      events: [],
+    })
+  );
+
+  pass('Direct activity writes are blocked');
+
+  await denied(() =>
+    call(outsider, 'reactDoodleClash', {
+      matchNumber,
+      reaction: '🔥',
+    })
+  );
+
+  pass('Nonmembers cannot send reactions');
+
+  await call(guest, 'reactDoodleClash', {
+    matchNumber,
+    reaction: '🔥',
+  });
+
+  const reacted = (
+    await getDocFromServer(activityRef(host))
+  ).data();
+
+  assert.ok(
+    reacted.events.some(
+      event =>
+        event.kind === 'reaction' &&
+        event.text === '🔥' &&
+        event.uid === guest.uid
+    )
+  );
+
+  pass('Player reactions reach other members');
+
+  await assert.rejects(() =>
+    call(guest, 'reactDoodleClash', {
+      matchNumber,
+      reaction: '👏',
+    }),
+    error =>
+      String(error.code).includes(
+        'resource-exhausted'
+      )
+  );
+
+  pass('Reaction spam cooldown works');
+
+  await assert.rejects(() =>
+    call(host, 'updateDoodleClashDrawing', {
       ...previewData,
       action: 'clear',
     })
@@ -390,6 +539,31 @@ async function main() {
   assert.ok(correct.points <= 100);
 
   pass('Correct guesses receive valid points');
+
+  const activity = (
+    await getDocFromServer(activityRef(host))
+  ).data();
+
+  const correctEvent = activity.events.find(
+    event =>
+      event.kind === 'correct' &&
+      event.uid === guest.uid
+  );
+
+  assert.ok(correctEvent);
+  assert.ok(
+    correctEvent.text.includes(
+      String(correct.points)
+    )
+  );
+
+  assert.ok(
+    !correctEvent.text
+      .toLowerCase()
+      .includes(answer.toLowerCase())
+  );
+
+  pass('Correct guess notifications conceal the answer');
 
   await assert.rejects(() =>
     call(guest, 'guessDoodleClashWord', {
@@ -427,3 +601,4 @@ main()
       })
     );
   });
+

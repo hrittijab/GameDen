@@ -60,3 +60,37 @@ export {
 export {
   maintainDoodleClashMatch,
 } from './doodle-clash/maintenance';
+
+export {
+  configureDoodleClashRoom,
+} from './doodle-clash/configureRoom';
+
+export {
+  reactDoodleClash,
+} from './doodle-clash/activity';
+
+export {
+  startWordClashMatch,
+  selectWordClashLetter,
+  submitWordClashWord,
+  getMyWordClashSubmission,
+  advanceWordClashPhase,
+} from './word-clash/handlers';
+
+export {
+  heartbeatWordClash,
+  leaveWordClashRoom,
+  kickWordClashPlayer,
+} from './word-clash/lifecycle';
+
+export {
+  configureWordClashRoom,
+} from './word-clash/configureRoom';
+
+export {
+  maintainWordClashMatch,
+} from './word-clash/maintenance';
+
+export {
+  reactWordClash,
+} from './word-clash/reactions';

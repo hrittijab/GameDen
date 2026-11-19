@@ -26,6 +26,8 @@ import type {
   RoundRoom,
 } from './rounds';
 
+import { validateModeAction } from './settings';
+
 const MIN_UPDATE_INTERVAL = 200;
 
 export const previewDoodleClashStroke = onCall(
@@ -94,7 +96,26 @@ export const previewDoodleClashStroke = onCall(
         };
       }
 
+      validateModeAction(
+        room.roundMode ?? 'classic',
+        drawing,
+        'add',
+        stroke,
+      );
+
       const previous = previewSnap.data();
+
+      if (
+        room.roundMode === 'stroke' &&
+        previous?.matchNumber === room.matchNumber &&
+        previous?.revision === drawing.revision &&
+        previous.stroke?.id !== stroke.id
+      ) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Your one stroke has already started.',
+        );
+      }
 
       if (
         previous?.matchNumber === room.matchNumber &&
@@ -121,3 +142,5 @@ export const previewDoodleClashStroke = onCall(
     });
   },
 );
+
+

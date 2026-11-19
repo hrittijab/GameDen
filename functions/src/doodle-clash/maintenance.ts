@@ -116,6 +116,8 @@ export const maintainDoodleClashMatch = onCall(
 
       if (
         room.phase === 'drawing' &&
+        room.roundMode !== 'nohint' &&
+        room.matchSettings?.hints !== false &&
         now < room.deadline
       ) {
         const secretSnap = await tx.get(secretRef);
@@ -131,9 +133,14 @@ export const maintainDoodleClashMatch = onCall(
           secret.answer &&
           secret.matchNumber === room.matchNumber
         ) {
-          const elapsed =
-            DRAWING_MS -
-            Math.max(0, room.deadline - now);
+          const duration =
+            room.drawingMs ?? DRAWING_MS;
+
+          const elapsed = Math.max(
+            0,
+            duration -
+              Math.max(0, room.deadline - now),
+          ) / duration * DRAWING_MS;
 
           const hint = progressiveHint(
             secret.answer,
@@ -155,3 +162,4 @@ export const maintainDoodleClashMatch = onCall(
     });
   },
 );
+

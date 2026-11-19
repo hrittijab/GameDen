@@ -85,25 +85,35 @@ export function normalizeWord(value: string): string {
 
 export function chooseWords(
   used: string[] = [],
+  difficulty: 'mixed' | 'easy' | 'medium' | 'hard' = 'mixed',
 ): WordOption[] {
-  const difficulties = [
-    'easy',
-    'medium',
-    'hard',
-  ] as const;
+  const difficulties: WordOption['difficulty'][] =
+    difficulty === 'mixed'
+      ? ['easy', 'medium', 'hard']
+      : [difficulty, difficulty, difficulty];
 
-  return difficulties.map(difficulty => {
-    const unused = WORDS[difficulty].filter(
-      word => !used.includes(word),
+  const selected: string[] = [];
+
+  return difficulties.map(level => {
+    const unused = WORDS[level].filter(
+      word =>
+        !used.includes(word) &&
+        !selected.includes(word),
     );
 
     const pool = unused.length
       ? unused
-      : WORDS[difficulty];
+      : WORDS[level].filter(
+          word => !selected.includes(word),
+        );
+
+    const word = pool[randomInt(pool.length)];
+
+    selected.push(word);
 
     return {
-      word: pool[randomInt(pool.length)],
-      difficulty,
+      word,
+      difficulty: level,
     };
   });
 }
@@ -111,3 +121,4 @@ export function chooseWords(
 export function maskWord(word: string): string {
   return word.replace(/[a-z0-9]/gi, '_');
 }
+

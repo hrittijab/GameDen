@@ -55,6 +55,9 @@ import {
 } from './useDrawingSync';
 
 import Canvas from './Canvas';
+
+import { INK_LIMIT } from './settings';
+import { remainingInk } from './drawingLimits';
 import DrawingTools from './DrawingTools';
 import RoundPanel from './RoundPanel';
 import SoundFeedback from './SoundFeedback';
@@ -196,11 +199,40 @@ function Match({
       ) ?? room.hostId
     : '';
 
+  const roundMode =
+    room?.roundMode ?? 'classic';
+
+  const restricted =
+    roundMode === 'ink' ||
+    roundMode === 'stroke';
+
+  const inkRemaining = remainingInk(
+    sync.strokes,
+  );
+
+  const strokeAvailable =
+    roundMode !== 'stroke' ||
+    sync.strokes.length === 0;
+
+  const inkAvailable =
+    roundMode !== 'ink' ||
+    inkRemaining >= 1;
+
+  const effectiveColor =
+    restricted && color === '#FFFFFF'
+      ? '#171717'
+      : color;
+
+  const effectiveTool =
+    restricted ? 'brush' : tool;
+
   const canDraw =
     isArtist &&
     sync.synchronized &&
     !busy &&
-    sync.queued < 30;
+    sync.queued < 30 &&
+    strokeAvailable &&
+    inkAvailable;
 
   useEffect(() => {
     let alive = true;
@@ -498,9 +530,21 @@ function Match({
               <Canvas
                 key={room.matchNumber}
                 strokes={sync.strokes}
-                color={color}
+                commitOnCancel={
+                  roundMode === 'stroke'
+                }
+                hideDrawing={
+                  isArtist &&
+                  roundMode === 'blind'
+                }
+                maxDistance={
+                  roundMode === 'ink'
+                    ? inkRemaining
+                    : undefined
+                }
+                color={effectiveColor}
                 brushSize={brushSize}
-                tool={tool}
+                tool={effectiveTool}
                 canDraw={canDraw}
                 onStrokeProgress={sync.progress}
                 onStrokeComplete={stroke =>
@@ -511,10 +555,56 @@ function Match({
 
             {isArtist && (
               <>
+                {roundMode === 'ink' && (
+                  <View style={s.inkPanel}>
+                    <Text style={s.caption}>
+                      Ink remaining: {
+                        Math.round(
+                          inkRemaining / INK_LIMIT * 100,
+                        )
+                      }%
+                    </Text>
+
+                    <View style={s.inkTrack}>
+                      <View
+                        style={[
+                          s.inkFill,
+                          {
+                            width: `${Math.max(
+                              0,
+                              Math.min(
+                                100,
+                                inkRemaining / INK_LIMIT * 100,
+                              ),
+                            )}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {roundMode === 'stroke' && (
+                  <Text style={s.caption}>
+                    {strokeAvailable
+                      ? 'You have one stroke. Make it count!'
+                      : 'Stroke used. Wait for the guesses.'}
+                  </Text>
+                )}
+
+                {roundMode === 'blind' && (
+                  <Text style={s.caption}>
+                    Your drawing is hidden from you.
+                    Your friends can still see it.
+                  </Text>
+                )}
+
                 <DrawingTools
-                  color={color}
+                  restricted={restricted}
+                  canClear={sync.queued === 0}
+                  color={effectiveColor}
                   brushSize={brushSize}
-                  tool={tool}
+                  tool={effectiveTool}
                   canUndo={
                     sync.queued === 0 &&
                     !!sync.drawing?.strokes.length
@@ -665,6 +755,26 @@ const s = StyleSheet.create({
     lineHeight: 18,
   },
 
+  inkPanel: {
+    backgroundColor: '#303550',
+    padding: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+
+  inkTrack: {
+    height: 9,
+    backgroundColor: '#15182D',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+
+  inkFill: {
+    height: 9,
+    backgroundColor: '#55D99A',
+    borderRadius: 6,
+  },
+
   canvasSection: {
     gap: 10,
   },
@@ -743,3 +853,5 @@ const s = StyleSheet.create({
     fontSize: 13,
   },
 });
+
+

@@ -4,8 +4,12 @@ import type {
 
 import { callServer } from '../../multiplayer/api';
 
+import RoomSettings from './RoomSettings';
+
 export const DOODLE_CLASH_CONFIG: MultiplayerLobbyConfig = {
   gameId: 'doodle-clash',
+
+  SettingsPanel: RoomSettings,
 
   title: 'Doodle Clash',
 
@@ -39,3 +43,4 @@ export const DOODLE_CLASH_CONFIG: MultiplayerLobbyConfig = {
       code,
     }),
 };
+

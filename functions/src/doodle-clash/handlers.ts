@@ -1,4 +1,17 @@
 import { evaluateGuess } from './intelligence';
+
+import {
+  appendActivity,
+  getActivityState,
+} from './activity';
+
+import {
+  validateSettings,
+  calculateTurns,
+  validateModeAction,
+} from './settings';
+
+import { validateStroke } from './engine';
 import {
   HttpsError,
   onCall,
@@ -114,12 +127,14 @@ export const startDoodleClashMatch = onCall(
 
       const playerCount = order.length;
 
-      const turnsPerPlayer =
-        playerCount === 2 ? 5 :
-        playerCount === 3 ? 4 :
-        playerCount === 4 ? 3 :
-        playerCount <= 8 ? 2 :
-        1;
+      const matchSettings = validateSettings(
+        room.matchSettings,
+      );
+
+      const turnsPerPlayer = calculateTurns(
+        playerCount,
+        matchSettings,
+      );
 
       const artistQueue = Array.from(
         { length: turnsPerPlayer },
@@ -134,7 +149,7 @@ export const startDoodleClashMatch = onCall(
         tx,
         roomRef,
         secretRef,
-        room,
+        { ...room, matchSettings },
         {
           artistId: artistQueue[0],
           playerOrder: order,
@@ -266,6 +281,7 @@ export const selectDoodleClashWord = onCall(
         roomRef,
         secretRef,
         secret,
+        room,
         index,
       );
 
@@ -353,6 +369,22 @@ export const guessDoodleClashWord = onCall(
         );
       }
 
+      const activityRef = roomRef
+        .collection('activity')
+        .doc('current');
+
+      const feedEnabled =
+        room.matchSettings?.guessFeed !== false;
+
+      const activitySnap = feedEnabled
+        ? await tx.get(activityRef)
+        : null;
+
+      const activity = getActivityState(
+        activitySnap?.data(),
+        room.matchNumber,
+      );
+
       tx.set(secretRef, {
         ...secret,
         lastGuessAt: {
@@ -369,6 +401,31 @@ export const guessDoodleClashWord = onCall(
       const correct = evaluation === 'correct';
 
       if (!correct) {
+        if (feedEnabled) {
+          const normalizedGuess =
+            normalizeWord(guess);
+
+          const normalizedAnswer =
+            normalizeWord(secret.answer);
+
+          const publicGuess =
+            evaluation === 'close' ||
+            normalizedGuess.includes(normalizedAnswer)
+              ? 'Made a guess'
+              : guess.trim().slice(0, 60);
+
+          tx.set(
+            activityRef,
+            appendActivity(activity, {
+              uid,
+              playerName: room.players[uid],
+              kind: 'guess',
+              text: publicGuess,
+              timestamp: now,
+            }),
+          );
+        }
+
         return {
           success: true,
           correct: false,
@@ -385,11 +442,26 @@ export const guessDoodleClashWord = onCall(
       const points = pointsForGuess(
         room.guessedIds.length,
         remainingMs,
+        room.drawingMs,
       );
 
       const artistPoints = pointsForArtist(
         remainingMs,
+        room.drawingMs,
       );
+
+      if (feedEnabled) {
+        tx.set(
+          activityRef,
+          appendActivity(activity, {
+            uid,
+            playerName: room.players[uid],
+            kind: 'correct',
+            text: `Guessed correctly! +${points} points`,
+            timestamp: now,
+          }),
+        );
+      }
 
       const artist = room.artistId!;
 
@@ -491,6 +563,7 @@ export const advanceDoodleClashRound = onCall(
             roomRef,
             secretRef,
             secret,
+            room,
             0,
           );
           break;
@@ -532,6 +605,10 @@ export const updateDoodleClashDrawing = onCall(
     return db.runTransaction(async tx => {
       const roomSnap = await tx.get(roomRef);
       const drawingSnap = await tx.get(drawingRef);
+
+      const previewSnap = await tx.get(
+        roomRef.collection('preview').doc('current'),
+      );
 
       if (!roomSnap.exists || !drawingSnap.exists) {
         throw new HttpsError(
@@ -577,10 +654,38 @@ export const updateDoodleClashDrawing = onCall(
         );
       }
 
+      const action = request.data?.action;
+
+      const stroke = action === 'add'
+        ? validateStroke(request.data?.stroke)
+        : undefined;
+
+      const preview = previewSnap.data();
+
+      if (
+        room.roundMode === 'stroke' &&
+        action === 'add' &&
+        preview?.matchNumber === room.matchNumber &&
+        preview?.revision === current.revision &&
+        preview.stroke?.id !== stroke?.id
+      ) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Only the original stroke may be submitted.',
+        );
+      }
+
+      validateModeAction(
+        room.roundMode ?? 'classic',
+        current,
+        action,
+        stroke,
+      );
+
       const updated = applyDrawingAction(
         current,
-        request.data?.action,
-        request.data?.stroke,
+        action,
+        stroke,
       );
 
       if (updated !== current) {
@@ -598,6 +703,9 @@ export const updateDoodleClashDrawing = onCall(
     });
   },
 );
+
+
+
 
 
 

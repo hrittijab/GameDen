@@ -12,6 +12,8 @@ import {
 } from './types';
 
 type Props = {
+  restricted?: boolean;
+  canClear?: boolean;
   color: string;
   brushSize: number;
   tool: DrawingTool;
@@ -37,13 +39,19 @@ export default function DrawingTools({
   onUndo,
   onRedo,
   onClear,
+  restricted = false,
+  canClear = true,
 }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.label}>COLORS</Text>
 
       <View style={styles.row}>
-        {BRUSH_COLORS.map(item => (
+        {BRUSH_COLORS.filter(
+          item =>
+            !restricted ||
+            item !== '#FFFFFF',
+        ).map(item => (
           <Pressable
             key={item}
             accessibilityRole="button"
@@ -107,43 +115,48 @@ export default function DrawingTools({
         </Pressable>
 
         <Pressable
+          disabled={restricted}
           onPress={() => onToolChange('eraser')}
           style={[
             styles.button,
             tool === 'eraser' &&
               styles.selectedButton,
+            restricted && styles.disabled,
           ]}
         >
           <Text style={styles.buttonText}>Eraser</Text>
         </Pressable>
 
         <Pressable
-          disabled={!canUndo}
+          disabled={restricted || !canUndo}
           onPress={onUndo}
           style={[
             styles.button,
-            !canUndo && styles.disabled,
+            (restricted || !canUndo) && styles.disabled,
           ]}
         >
           <Text style={styles.buttonText}>Undo</Text>
         </Pressable>
 
         <Pressable
-          disabled={!canRedo}
+          disabled={restricted || !canRedo}
           onPress={onRedo}
           style={[
             styles.button,
-            !canRedo && styles.disabled,
+            (restricted || !canRedo) && styles.disabled,
           ]}
         >
           <Text style={styles.buttonText}>Redo</Text>
         </Pressable>
 
         <Pressable
+          disabled={restricted || !canClear}
           onPress={onClear}
           style={[
             styles.button,
             styles.clearButton,
+            (restricted || !canClear) &&
+              styles.disabled,
           ]}
         >
           <Text style={styles.buttonText}>Clear</Text>
@@ -223,3 +236,4 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
 });
+

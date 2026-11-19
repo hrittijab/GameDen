@@ -5,6 +5,7 @@ import {
 
 import {
   useEffect,
+  type ComponentType,
   useRef,
   useState,
 } from 'react';
@@ -45,7 +46,16 @@ import type {
   PresenceConfig,
 } from './types';
 
+export type LobbySettingsProps = {
+  room: MultiplayerRoom;
+  code: string;
+  uid: string;
+  disabled: boolean;
+  run: (action: () => Promise<void>) => Promise<void>;
+};
+
 export type MultiplayerLobbyConfig = {
+  SettingsPanel?: ComponentType<LobbySettingsProps>;
   gameId: string;
   title: string;
   icon: string;
@@ -982,6 +992,16 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
             )}
           </View>
 
+          {room && config.SettingsPanel && (
+            <config.SettingsPanel
+              room={room}
+              code={roomCode}
+              uid={myUid}
+              disabled={loading}
+              run={run}
+            />
+          )}
+
           {/* START GAME PANEL */}
 
           <View style={s.panel}>
@@ -1523,6 +1543,7 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
 });
+
 
 
 

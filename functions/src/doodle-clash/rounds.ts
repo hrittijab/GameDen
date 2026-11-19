@@ -10,6 +10,14 @@ import type {
 import { emptyDrawing } from './engine';
 
 import {
+  DEFAULT_SETTINGS,
+  chooseRoundMode,
+  drawingDuration,
+  type MatchSettings,
+  type GameMode,
+} from './settings';
+
+import {
   chooseWords,
   maskWord,
   type WordOption,
@@ -28,6 +36,9 @@ export type Phase =
 
 export type RoundRoom = DoodleRoom & {
   phase: Phase;
+  matchSettings: MatchSettings;
+  roundMode: GameMode;
+  drawingMs: number;
   deadline: number;
   roundNumber: number;
   totalRounds: number;
@@ -50,10 +61,11 @@ export type RoundSecret = {
 export function newSecret(
   matchNumber: number,
   usedWords: string[] = [],
+  difficulty: MatchSettings['difficulty'] = 'mixed',
 ): RoundSecret {
   return {
     matchNumber,
-    choices: chooseWords(usedWords),
+    choices: chooseWords(usedWords, difficulty),
     answer: null,
     usedWords,
     lastGuessAt: {},
@@ -64,7 +76,7 @@ export function beginRound(
   tx: Transaction,
   roomRef: DocumentReference,
   secretRef: DocumentReference,
-  room: DoodleRoom,
+  room: DoodleRoom & { matchSettings?: MatchSettings },
   settings: {
     artistId: string;
     playerOrder: string[];
@@ -78,7 +90,22 @@ export function beginRound(
   const matchNumber =
     (room.matchNumber ?? 0) + 1;
 
+  const matchSettings =
+    room.matchSettings ?? DEFAULT_SETTINGS;
+
+  const roundMode = chooseRoundMode(
+    matchSettings.mode,
+  );
+
+  const drawingMs = drawingDuration(
+    matchSettings,
+    roundMode,
+  );
+
   const next: Partial<RoundRoom> = {
+    matchSettings,
+    roundMode,
+    drawingMs,
     status: 'playing',
     phase: 'choosing',
     artistId: settings.artistId,
@@ -99,12 +126,29 @@ export function beginRound(
 
   tx.set(
     secretRef,
-    newSecret(matchNumber, settings.usedWords),
+    newSecret(
+      matchNumber,
+      settings.usedWords,
+      matchSettings.difficulty,
+    ),
   );
 
   tx.set(
     roomRef.collection('drawing').doc('current'),
     emptyDrawing(matchNumber),
+  );
+
+  tx.delete(
+    roomRef.collection('preview').doc('current'),
+  );
+
+  tx.set(
+    roomRef.collection('activity').doc('current'),
+    {
+      matchNumber,
+      events: [],
+      lastReactionAt: {},
+    },
   );
 }
 
@@ -113,14 +157,17 @@ export function chooseAnswer(
   roomRef: DocumentReference,
   secretRef: DocumentReference,
   secret: RoundSecret,
+  room: RoundRoom,
   index: number,
 ) {
   const answer = secret.choices[index].word;
 
   tx.update(roomRef, {
     phase: 'drawing',
-    hint: maskWord(answer),
-    deadline: Date.now() + DRAWING_MS,
+    hint: room.roundMode === 'nohint'
+      ? ''
+      : maskWord(answer),
+    deadline: Date.now() + (room.drawingMs ?? DRAWING_MS),
     revealedWord: null,
   });
 
@@ -208,10 +255,11 @@ export function advanceRound(
 export function pointsForGuess(
   previousCorrectGuesses: number,
   remainingMs: number,
+  durationMs = DRAWING_MS,
 ): number {
   const timeRatio = Math.max(
     0,
-    Math.min(1, remainingMs / DRAWING_MS),
+    Math.min(1, remainingMs / Math.max(1, durationMs)),
   );
 
   const basePoints = 20;
@@ -231,12 +279,14 @@ export function pointsForGuess(
 
 export function pointsForArtist(
   remainingMs: number,
+  durationMs = DRAWING_MS,
 ): number {
   const timeRatio = Math.max(
     0,
-    Math.min(1, remainingMs / DRAWING_MS),
+    Math.min(1, remainingMs / Math.max(1, durationMs)),
   );
 
   return 10 + Math.round(10 * timeRatio);
 }
+
 
