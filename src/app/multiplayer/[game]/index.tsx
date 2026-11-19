@@ -1,3 +1,4 @@
+import { DOODLE_CLASH_CONFIG } from '../../../games/doodle-clash/config';
 import {
   useLocalSearchParams,
   useRouter,
@@ -22,6 +23,7 @@ const GAMES: Record<
   MultiplayerLobbyConfig
 > = {
   'color-clash': COLOR_CLASH_CONFIG,
+  'doodle-clash': DOODLE_CLASH_CONFIG,
 };
 
 export default function MultiplayerRoute() {
@@ -68,3 +70,4 @@ export default function MultiplayerRoute() {
     />
   );
 }
+

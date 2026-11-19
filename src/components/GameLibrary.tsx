@@ -61,7 +61,7 @@ export default function GameLibrary({
 
     if (game.mode === 'online') {
       router.push({
-        pathname: '/multiplayer/[game]/index',
+        pathname: '/multiplayer/[game]',
         params: {
           game: game.id,
         },
@@ -358,3 +358,4 @@ const s = StyleSheet.create({
     marginTop: 30,
   },
 });
+

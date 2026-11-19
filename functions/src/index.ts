@@ -28,3 +28,22 @@ export {
   kickColorClashPlayer,
   leaveColorClashRoom,
 } from './color-clash/lifecycle';
+
+// ==========================================
+// DOODLE CLASH - GAMEPLAY
+// ==========================================
+
+export {
+  startDoodleClashMatch,
+  updateDoodleClashDrawing,
+} from './doodle-clash/handlers';
+
+// ==========================================
+// DOODLE CLASH - MULTIPLAYER LIFECYCLE
+// ==========================================
+
+export {
+  heartbeatDoodleClash,
+  leaveDoodleClashRoom,
+  kickDoodleClashPlayer,
+} from './doodle-clash/lifecycle';

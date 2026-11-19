@@ -167,7 +167,7 @@ export default function Canvas({
     >
       <View
         pointerEvents="none"
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
       >
         <Svg
           width="100%"
@@ -199,7 +199,7 @@ export default function Canvas({
       </View>
 
       <View
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         onStartShouldSetResponder={() => canDraw}
         onMoveShouldSetResponder={() => canDraw}
         onResponderGrant={beginStroke}
@@ -221,3 +221,4 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+

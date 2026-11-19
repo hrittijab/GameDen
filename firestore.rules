@@ -142,5 +142,109 @@ service cloud.firestore {
     match /colorClashSecrets/{roomCode} {
       allow read, write: if false;
     }
+    // ======================================
+    // DOODLE CLASH
+    // ======================================
+
+    match /doodleClashRooms/{roomCode} {
+
+      function signedIn() {
+        return request.auth != null;
+      }
+
+      function validName(name) {
+        return name is string
+          && name.size() >= 1
+          && name.size() <= 24;
+      }
+
+      function isMember() {
+        return signedIn()
+          && request.auth.uid in get(
+            /databases/$(database)/documents/doodleClashRooms/$(roomCode)
+          ).data.players.keys();
+      }
+
+      allow get: if signedIn();
+
+      allow list: if false;
+
+      allow create: if signedIn()
+
+        && roomCode.matches('^[A-HJ-NP-Z2-9]{8}$')
+
+        && request.resource.data.keys()
+          .hasOnly(['hostId', 'status', 'players'])
+
+        && request.resource.data.hostId
+          == request.auth.uid
+
+        && request.resource.data.status == 'lobby'
+
+        && request.resource.data.players
+          .keys().hasOnly([request.auth.uid])
+
+        && request.resource.data.players.size() == 1
+
+        && validName(
+          request.resource.data.players[request.auth.uid]
+        );
+
+      allow update: if signedIn()
+
+        && resource.data.status == 'lobby'
+
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['players'])
+
+        && request.resource.data.players.size() <= 12
+
+        && !resource.data.players
+          .keys().hasAny([request.auth.uid])
+
+        && request.resource.data.players
+          .diff(resource.data.players)
+          .addedKeys().hasOnly([request.auth.uid])
+
+        && request.resource.data.players
+          .diff(resource.data.players)
+          .addedKeys().size() == 1
+
+        && request.resource.data.players
+          .diff(resource.data.players)
+          .removedKeys().size() == 0
+
+        && request.resource.data.players
+          .diff(resource.data.players)
+          .changedKeys().size() == 0
+
+        && validName(
+          request.resource.data.players[request.auth.uid]
+        );
+
+      allow delete: if false;
+
+      match /drawing/{drawingId} {
+
+        allow get: if isMember()
+          && drawingId == 'current';
+
+        allow list, create, update, delete: if false;
+      }
+
+      match /presence/{playerId} {
+
+        allow get, list: if isMember();
+
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /doodleClashSecrets/{roomCode} {
+      allow read, write: if false;
+    }
+
   }
 }
+
+

@@ -152,7 +152,7 @@ const s = StyleSheet.create({
   },
 
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#00000066',
     justifyContent: 'center',
     alignItems: 'center',
@@ -211,3 +211,4 @@ const s = StyleSheet.create({
     fontWeight: '800',
   },
 });
+

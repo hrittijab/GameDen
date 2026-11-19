@@ -54,6 +54,18 @@ export const CATEGORIES: GameCategory[] = [
 ];
 
 export const GAMES: Game[] = [
+
+  {
+    id: 'doodle-clash',
+    name: 'Doodle Clash',
+    description: 'Draw mysterious words and challenge your friends to guess.',
+    category: 'multiplayer',
+    image: require('../../assets/games/doodle-clash.webp'),
+    mode: 'online',
+    players: '2-12 players',
+    color: '#49365F',
+    available: true,
+  },
   {
     id: 'imposter',
     name: 'Imposter',
@@ -134,3 +146,4 @@ export function getAvailableGameCount(id: CategoryId) {
     game => game.available,
   ).length;
 }
+
