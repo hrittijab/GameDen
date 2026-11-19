@@ -75,6 +75,19 @@ import {
 import ReactionBar from '../../multiplayer/ReactionBar';
 import ReactionBubble from '../../multiplayer/ReactionBubble';
 
+import CompactSeat from './CompactSeat';
+
+import {
+  createTableLayout,
+  spotlightPlayer,
+} from './tableLayout';
+
+import {
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type LayoutRectangle,
+} from 'react-native';
+
 import {
   getReaction,
   type Reaction,
@@ -879,6 +892,17 @@ export default function ColorClashGame() {
   const [flight, setFlight] =
     useState<Flight | null>(null);
 
+  const { width: screenWidth } = useWindowDimensions();
+
+  const [opponentsExpanded, setOpponentsExpanded] =
+    useState<boolean | null>(null);
+
+  const [selectedOpponent, setSelectedOpponent] =
+    useState<string | null>(null);
+
+  const layoutPositions =
+    useRef<Record<string, LayoutRectangle>>({});
+
   const [arenaSize, setArenaSize] =
     useState({
       width: 330,
@@ -1197,6 +1221,26 @@ export default function ColorClashGame() {
 
       : [];
 
+  const tableLayout = createTableLayout(others);
+
+  const largeTable = tableLayout.mode === 'grid';
+
+  const expandedOpponents =
+    opponentsExpanded ?? others.length <= 9;
+
+  const spotlightId = spotlightPlayer(
+    others,
+    room?.currentPlayerId,
+    activeIds,
+  );
+
+  const gridColumns =
+    screenWidth >= 760
+      ? 6
+      : screenWidth >= 420
+        ? 5
+        : 4;
+
   const playerName = (
     playerId: string,
   ): string =>
@@ -1204,42 +1248,128 @@ export default function ColorClashGame() {
     room?.departedPlayers?.[playerId]?.name ??
     'Player';
 
+  function recordLayout(
+    key: string,
+    event: LayoutChangeEvent,
+  ) {
+    layoutPositions.current[key] =
+      event.nativeEvent.layout;
+  }
+
+  function measuredPoint(
+    ...keys: string[]
+  ): Point | undefined {
+    const rectangles = keys.map(
+      key => layoutPositions.current[key],
+    );
+
+    if (rectangles.some(item => !item)) {
+      return undefined;
+    }
+
+    const last = rectangles[rectangles.length - 1];
+
+    return {
+      x: rectangles.reduce(
+        (sum, item) => sum + item.x,
+        0,
+      ) + last.width / 2,
+
+      y: rectangles.reduce(
+        (sum, item) => sum + item.y,
+        0,
+      ) + last.height / 2,
+    };
+  }
+
   function playerPoint(
     playerId: string,
   ): Point {
-    const width =
-      arenaSize.width;
-
-    const height =
-      arenaSize.height;
-
     if (playerId === uid) {
-      return {
-        x: width / 2,
-        y: height - 65,
+      return measuredPoint(
+        'self',
+        'selfHeader',
+        'selfAvatar',
+      ) ?? {
+        x: arenaSize.width / 2,
+        y: arenaSize.height - 65,
       };
     }
 
-    if (playerId === others[0]) {
-      return {
-        x: width * 0.13,
-        y: 95,
+    if (largeTable) {
+      if (expandedOpponents) {
+        const point = measuredPoint(
+          'table',
+          'opponentGrid',
+          'gridContent',
+          `grid:${playerId}`,
+        );
+
+        if (point) return point;
+      }
+
+      return measuredPoint(
+        'table',
+        'opponentGrid',
+        'spotlight',
+      ) ?? {
+        x: arenaSize.width / 2,
+        y: 45,
       };
     }
 
-    if (
-      playerId ===
-      others[others.length - 1]
-    ) {
-      return {
-        x: width * 0.87,
-        y: 95,
+    if (tableLayout.top.includes(playerId)) {
+      return measuredPoint(
+        'table',
+        'topSeats',
+        `top:${playerId}`,
+      ) ?? {
+        x: arenaSize.width / 2,
+        y: 55,
+      };
+    }
+
+    if (tableLayout.left === playerId) {
+      return measuredPoint(
+        'table',
+        'tableRow',
+        'leftSeat',
+      ) ?? {
+        x: arenaSize.width * 0.15,
+        y: 140,
+      };
+    }
+
+    if (tableLayout.right === playerId) {
+      return measuredPoint(
+        'table',
+        'tableRow',
+        'rightSeat',
+      ) ?? {
+        x: arenaSize.width * 0.85,
+        y: 140,
       };
     }
 
     return {
-      x: width / 2,
-      y: 12,
+      x: arenaSize.width / 2,
+      y: 45,
+    };
+  }
+
+  function pilePoint(
+    pile: 'deck' | 'discard',
+  ): Point {
+    return measuredPoint(
+      'table',
+      'tableRow',
+      'center',
+      'piles',
+      pile,
+    ) ?? {
+      x: arenaSize.width *
+        (pile === 'deck' ? 0.43 : 0.57),
+      y: 180,
     };
   }
 
@@ -1262,15 +1392,8 @@ export default function ColorClashGame() {
     lastEventId.current =
       gameEvent.id;
 
-    const discardPoint = {
-      x: arenaSize.width * 0.56,
-      y: 100,
-    };
-
-    const deckPoint = {
-      x: arenaSize.width * 0.43,
-      y: 100,
-    };
+    const discardPoint = pilePoint('discard');
+    const deckPoint = pilePoint('deck');
 
     if (gameEvent.kind === 'start') {
       sound('deal');
@@ -1737,6 +1860,29 @@ export default function ColorClashGame() {
   // PLAYER SEAT RENDERER
   // ========================================
 
+  const compactSeat = (playerId: string) => (
+    <CompactSeat
+      name={playerName(playerId)}
+      count={room?.cardCounts?.[playerId] ?? 0}
+      index={ids.indexOf(playerId)}
+      active={
+        room?.currentPlayerId === playerId &&
+        !room?.departedPlayers?.[playerId]
+      }
+      host={room?.hostId === playerId}
+      uno={
+        !!room?.unoCalled?.[playerId] &&
+        room?.cardCounts?.[playerId] === 1
+      }
+      departed={
+        !!room?.departedPlayers?.[playerId]
+      }
+      connection={statusOf(playerId)}
+      reaction={getReaction(room, playerId)}
+      onPress={() => setSelectedOpponent(playerId)}
+    />
+  );
+
   const seat = (playerId: string) => {
     const departed =
       room?.departedPlayers?.[playerId];
@@ -2128,6 +2274,102 @@ export default function ColorClashGame() {
         <SoundButton accent="#A5E1EB" />
       </View>
 
+      {/* OPPONENT DETAILS */}
+
+      <Modal
+        visible={
+          selectedOpponent !== null &&
+          ids.includes(selectedOpponent)
+        }
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setSelectedOpponent(null)
+        }
+      >
+        <View style={s.modalOverlay}>
+          {!!selectedOpponent && (
+            <View style={s.modalPanel}>
+              <View style={s.detailAvatar}>
+                <Avatar
+                  index={ids.indexOf(
+                    selectedOpponent,
+                  )}
+                  active={
+                    room.currentPlayerId ===
+                      selectedOpponent
+                  }
+                  connection={
+                    statusOf(selectedOpponent)
+                  }
+                />
+              </View>
+
+              <Text style={s.detailName}>
+                {playerName(selectedOpponent)}
+              </Text>
+
+              <Text style={s.muted}>
+                {room.hostId === selectedOpponent
+                  ? '👑 Room host'
+                  : 'Player'}
+              </Text>
+
+              <View style={s.detailStats}>
+                <Text style={s.detailCount}>
+                  {room.cardCounts?.[
+                    selectedOpponent
+                  ] ?? 0}
+                </Text>
+
+                <Text style={s.muted}>
+                  Cards remaining
+                </Text>
+              </View>
+
+              <Text style={s.white}>
+                {room.departedPlayers?.[
+                  selectedOpponent
+                ]
+                  ? 'Left the match'
+                  : room.currentPlayerId ===
+                      selectedOpponent
+                    ? 'Currently playing'
+                    : statusOf(selectedOpponent) ===
+                        'online'
+                      ? 'Online'
+                      : statusOf(selectedOpponent) ===
+                          'offline'
+                        ? 'Offline'
+                        : 'Connecting'}
+              </Text>
+
+              {room.unoCalled?.[
+                selectedOpponent
+              ] &&
+                room.cardCounts?.[
+                  selectedOpponent
+                ] === 1 && (
+                  <Text style={s.unoSmall}>
+                    UNO!
+                  </Text>
+                )}
+
+              <TouchableOpacity
+                style={s.button}
+                onPress={() =>
+                  setSelectedOpponent(null)
+                }
+              >
+                <Text style={s.buttonText}>
+                  Back to game
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
+
       {/* QUIT CONFIRMATION */}
 
       <Modal
@@ -2239,26 +2481,6 @@ export default function ColorClashGame() {
         )}
       </View>
 
-      {/* ADDITIONAL OPPONENTS */}
-
-      {others.length > 2 && (
-        <ScrollView
-          horizontal
-
-          showsHorizontalScrollIndicator={
-            false
-          }
-
-          contentContainerStyle={
-            s.extraSeats
-          }
-        >
-          {others
-            .slice(1, -1)
-            .map(seat)}
-        </ScrollView>
-      )}
-
       {/* GAME ARENA */}
 
       <View
@@ -2279,20 +2501,204 @@ export default function ColorClashGame() {
           );
         }}
       >
-        <View style={s.table}>
-          <View style={s.tableRow}>
+        <View
+          style={s.table}
+          onLayout={event => recordLayout('table', event)}
+        >
+          {/* LARGE ROOM OPPONENTS */}
+
+          {largeTable && (
+            <View
+              style={s.opponentGrid}
+              onLayout={event =>
+                recordLayout('opponentGrid', event)
+              }
+            >
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={
+                  expandedOpponents
+                    ? 'Collapse opponent list'
+                    : 'Expand opponent list'
+                }
+                onPress={() =>
+                  setOpponentsExpanded(
+                    !expandedOpponents,
+                  )
+                }
+                style={s.gridHeader}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={s.gridTitle}>
+                    Opponents ({others.length})
+                  </Text>
+
+                  <Text style={s.gridCaption}>
+                    {activeIds.length} active players
+                  </Text>
+                </View>
+
+                <Text style={s.gridToggle}>
+                  {expandedOpponents
+                    ? 'Hide ▲'
+                    : 'Show ▼'}
+                </Text>
+              </TouchableOpacity>
+
+              <View
+                style={s.spotlight}
+                onLayout={event =>
+                  recordLayout('spotlight', event)
+                }
+              >
+                {expandedOpponents ? (
+                  <View style={{ gap: 5 }}>
+                    <Text style={s.spotlightLabel}>
+                      CURRENT TURN
+                    </Text>
+
+                    <Text style={s.spotlightName}>
+                      {myTurn
+                        ? 'Your turn'
+                        : playerName(
+                            room.currentPlayerId ?? '',
+                          )}
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={{ flex: 1, gap: 5 }}>
+                      <Text style={s.spotlightLabel}>
+                        {myTurn
+                          ? 'YOUR TURN'
+                          : 'CURRENT PLAYER'}
+                      </Text>
+
+                      <Text style={s.spotlightName}>
+                        {myTurn
+                          ? 'You'
+                          : playerName(
+                              room.currentPlayerId ?? '',
+                            )}
+                      </Text>
+
+                      <Text style={s.gridCaption}>
+                        {others.length} opponents
+                      </Text>
+                    </View>
+
+                    {!!spotlightId && (
+                      <View style={{ width: 90 }}>
+                        {compactSeat(spotlightId)}
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
+
+              {expandedOpponents && (
+                <View
+                  style={s.gridContent}
+                  onLayout={event =>
+                    recordLayout('gridContent', event)
+                  }
+                >
+                  {tableLayout.grid.map(playerId => (
+                    <View
+                      key={playerId}
+                      onLayout={event =>
+                        recordLayout(
+                          `grid:${playerId}`,
+                          event,
+                        )
+                      }
+                      style={{
+                        width: `${
+                          100 / gridColumns - 2
+                        }%`,
+                      }}
+                    >
+                      {compactSeat(playerId)}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* TOP OPPONENTS */}
+
+          {!largeTable &&
+            tableLayout.top.length > 0 && (
+              <View
+                style={s.topSeats}
+                onLayout={event =>
+                  recordLayout('topSeats', event)
+                }
+              >
+                {tableLayout.top.map(playerId => (
+                  <View
+                    key={playerId}
+                    style={[
+                      s.topSeat,
+                      tableLayout.mode === 'duel' &&
+                        s.duelSeat,
+                    ]}
+                    onLayout={event =>
+                      recordLayout(
+                        `top:${playerId}`,
+                        event,
+                      )
+                    }
+                  >
+                    {seat(playerId)}
+                  </View>
+                ))}
+              </View>
+            )}
+
+          <View
+            style={[
+              s.tableRow,
+              !tableLayout.left &&
+                !tableLayout.right &&
+                s.centerOnlyRow,
+            ]}
+            onLayout={event =>
+              recordLayout('tableRow', event)
+            }
+          >
             {/* LEFT PLAYER */}
 
-            <View style={s.side}>
-              {others[0] &&
-                seat(others[0])}
-            </View>
+            {!!tableLayout.left && (
+              <View
+                style={s.side}
+                onLayout={event =>
+                  recordLayout('leftSeat', event)
+                }
+              >
+                {seat(tableLayout.left)}
+              </View>
+            )}
 
             {/* CENTER PILES */}
 
-            <View style={s.center}>
-              <View style={s.piles}>
+            <View
+              style={s.center}
+              onLayout={event =>
+                recordLayout('center', event)
+              }
+            >
+              <View
+                style={s.piles}
+                onLayout={event =>
+                  recordLayout('piles', event)
+                }
+              >
                 <TouchableOpacity
+                  onLayout={event =>
+                    recordLayout('deck', event)
+                  }
                   disabled={
                     !canDraw ||
                     room.phase === 'drawn'
@@ -2316,7 +2722,11 @@ export default function ColorClashGame() {
                   </Text>
                 </TouchableOpacity>
 
-                <View>
+                <View
+                  onLayout={event =>
+                    recordLayout('discard', event)
+                  }
+                >
                   {room.topCard && (
                     <Card
                       card={room.topCard}
@@ -2360,14 +2770,16 @@ export default function ColorClashGame() {
 
             {/* RIGHT PLAYER */}
 
-            <View style={s.side}>
-              {others.length > 1 &&
-                seat(
-                  others[
-                    others.length - 1
-                  ],
-                )}
-            </View>
+            {!!tableLayout.right && (
+              <View
+                style={s.side}
+                onLayout={event =>
+                  recordLayout('rightSeat', event)
+                }
+              >
+                {seat(tableLayout.right)}
+              </View>
+            )}
           </View>
 
           {/* LAST ACTION */}
@@ -2400,6 +2812,9 @@ export default function ColorClashGame() {
         {/* MY HAND */}
 
         <View
+          onLayout={event =>
+            recordLayout('self', event)
+          }
           style={[
             s.self,
 
@@ -2407,8 +2822,18 @@ export default function ColorClashGame() {
               s.activeSeat,
           ]}
         >
-          <View style={s.selfHeader}>
-            <View style={s.reactionAvatar}>
+          <View
+            style={s.selfHeader}
+            onLayout={event =>
+              recordLayout('selfHeader', event)
+            }
+          >
+            <View
+              style={s.reactionAvatar}
+              onLayout={event =>
+                recordLayout('selfAvatar', event)
+              }
+            >
               <Avatar
                 index={myIndex}
 
@@ -2921,6 +3346,124 @@ const s = StyleSheet.create({
     borderRadius: 26,
     padding: 8,
     gap: 10,
+  },
+
+  topSeats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+
+  topSeat: {
+    flex: 1,
+    maxWidth: 145,
+    minWidth: 0,
+  },
+
+  duelSeat: {
+    maxWidth: 155,
+  },
+
+  centerOnlyRow: {
+    minHeight: 155,
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+
+  opponentGrid: {
+    backgroundColor: '#10302C',
+    borderRadius: 18,
+    padding: 9,
+    gap: 12,
+  },
+
+  gridHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    padding: 5,
+  },
+
+  gridTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+
+  gridCaption: {
+    color: '#A5CBC4',
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  gridToggle: {
+    color: '#A5E1EB',
+    fontSize: 12,
+    fontWeight: '800',
+    padding: 8,
+  },
+
+  gridContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    columnGap: '2%',
+    rowGap: 12,
+    paddingTop: 9,
+  },
+
+  spotlight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#254C48',
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#6DAFA0',
+    padding: 11,
+    gap: 12,
+  },
+
+  spotlightLabel: {
+    color: '#FFD071',
+    fontSize: 10,
+    letterSpacing: 1,
+    fontWeight: '900',
+  },
+
+  spotlightName: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+
+  detailAvatar: {
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+
+  detailName: {
+    textAlign: 'center',
+    fontSize: 23,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+
+  detailStats: {
+    alignItems: 'center',
+    gap: 5,
+    padding: 18,
+    borderRadius: 15,
+    backgroundColor: '#17233D',
+  },
+
+  detailCount: {
+    color: '#FFD071',
+    fontSize: 35,
+    fontWeight: '900',
   },
 
   tableRow: {
@@ -3584,6 +4127,14 @@ const s = StyleSheet.create({
     borderRadius: 2,
   },
 });
+
+
+
+
+
+
+
+
 
 
 
