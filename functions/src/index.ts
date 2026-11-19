@@ -94,3 +94,9 @@ export {
 export {
   reactWordClash,
 } from './word-clash/reactions';
+
+export {
+  sendColorClashReaction,
+  sendDoodleClashReaction,
+  sendWordClashReaction,
+} from './reactions';

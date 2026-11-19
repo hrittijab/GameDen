@@ -1,13 +1,11 @@
 import {
   useEffect,
-  useRef,
   useState,
 } from 'react';
 
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
 } from 'react-native';
 
@@ -16,22 +14,11 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 
-import {
-  db,
-} from '../../config/firebase';
-
-import {
-  callServer,
-} from '../../multiplayer/api';
+import { db } from '../../config/firebase';
 
 import type {
   DoodleRoom,
 } from './doodleClashRooms';
-
-const REACTIONS = [
-  '😂', '🔥', '👏',
-  '😍', '🤔', '😱',
-];
 
 type Event = {
   id: string;
@@ -55,26 +42,14 @@ export default function ActivityPanel({
   const [error, setError] =
     useState('');
 
-  const lock = useRef(false);
-
-  const [coolingDown, setCoolingDown] =
-    useState(false);
-
-  const cooldownTimer =
-    useRef<ReturnType<typeof setTimeout> | null>(
-      null,
-    );
-
-  const feedEnabled =
+  const enabled =
     room.matchSettings?.guessFeed !== false;
 
-  const reactionsEnabled =
-    room.matchSettings?.reactions !== false;
-
   useEffect(() => {
-    if (!feedEnabled && !reactionsEnabled) {
-      return;
-    }
+    setEvents([]);
+    setError('');
+
+    if (!enabled) return;
 
     return onSnapshot(
       doc(
@@ -84,6 +59,7 @@ export default function ActivityPanel({
         'activity',
         'current',
       ),
+
       snapshot => {
         const value = snapshot.data();
 
@@ -95,90 +71,41 @@ export default function ActivityPanel({
           return;
         }
 
-        setEvents(value.events ?? []);
+        const entries: Event[] =
+          value.events ?? [];
+
+        setEvents(
+          entries.filter(event =>
+            event.kind === 'guess' ||
+            event.kind === 'correct',
+          ).slice(-8),
+        );
       },
+
       reason => setError(reason.message),
     );
+
   }, [
     code,
     room.matchNumber,
-    feedEnabled,
-    reactionsEnabled,
+    enabled,
   ]);
 
-  useEffect(() => {
-    return () => {
-      if (cooldownTimer.current) {
-        clearTimeout(cooldownTimer.current);
-      }
-    };
-  }, []);
-
-  async function react(reaction: string) {
-    if (
-      lock.current ||
-      coolingDown ||
-      !reactionsEnabled ||
-      room.status !== 'playing'
-    ) {
-      return;
-    }
-
-    lock.current = true;
-
-    setCoolingDown(true);
-    setError('');
-
-    try {
-      await callServer(
-        'reactDoodleClash',
-        {
-          code,
-          matchNumber: room.matchNumber,
-          reaction,
-        },
-      );
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : 'Could not send reaction.',
-      );
-    } finally {
-      lock.current = false;
-
-      cooldownTimer.current = setTimeout(
-        () => setCoolingDown(false),
-        1600,
-      );
-    }
-  }
-
-  if (!feedEnabled && !reactionsEnabled) {
-    return null;
-  }
-
-  const visibleEvents = events
-    .filter(event =>
-      event.kind === 'reaction'
-        ? reactionsEnabled
-        : feedEnabled,
-    )
-    .slice(-8);
+  if (!enabled) return null;
 
   return (
     <View style={s.panel}>
       <Text style={s.title}>
-        Live Activity
+        Live Guesses
       </Text>
 
-      {visibleEvents.length === 0 && (
+      {!events.length && (
         <Text style={s.caption}>
-          Nothing yet. Join the fun!
+          Waiting for guesses...
         </Text>
       )}
 
-      {visibleEvents.map(event => (
+      {events.map(event => (
         <View
           key={event.id}
           style={[
@@ -197,35 +124,11 @@ export default function ActivityPanel({
             </Text>
 
             {': '}
+
             {event.text}
           </Text>
         </View>
       ))}
-
-      {reactionsEnabled &&
-        room.status === 'playing' && (
-          <View style={s.reactions}>
-            {REACTIONS.map(reaction => (
-              <Pressable
-                key={reaction}
-                disabled={coolingDown}
-                onPress={() =>
-                  void react(reaction)
-                }
-                accessibilityRole="button"
-                accessibilityLabel={`Send ${reaction}`}
-                style={[
-                  s.reaction,
-                  coolingDown && s.disabled,
-                ]}
-              >
-                <Text style={s.emoji}>
-                  {reaction}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
 
       {!!error && (
         <Text style={s.error}>
@@ -243,52 +146,42 @@ const s = StyleSheet.create({
     padding: 14,
     gap: 9,
   },
+
   title: {
     color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '900',
   },
+
   caption: {
     color: '#A6A9C4',
     fontSize: 12,
   },
+
   event: {
     backgroundColor: '#303550',
     padding: 9,
     borderRadius: 9,
   },
+
   correctEvent: {
     backgroundColor: '#23483D',
   },
+
   message: {
     color: '#D5D8E9',
     fontSize: 13,
     lineHeight: 19,
   },
+
   name: {
     fontWeight: '900',
   },
+
   correctText: {
     color: '#55D99A',
   },
-  reactions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  reaction: {
-    backgroundColor: '#343956',
-    borderRadius: 10,
-    padding: 9,
-    flexGrow: 1,
-    alignItems: 'center',
-  },
-  emoji: {
-    fontSize: 22,
-  },
-  disabled: {
-    opacity: 0.45,
-  },
+
   error: {
     color: '#FF9AAE',
     fontSize: 12,

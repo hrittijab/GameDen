@@ -62,6 +62,13 @@ import DrawingTools from './DrawingTools';
 import RoundPanel from './RoundPanel';
 import SoundFeedback from './SoundFeedback';
 
+import ReactionBar from '../../multiplayer/ReactionBar';
+import ReactionStrip from '../../multiplayer/ReactionStrip';
+
+import {
+  reactionsEnabled,
+} from '../../multiplayer/reactions';
+
 import type {
   DrawingTool,
 } from './types';
@@ -510,6 +517,25 @@ function Match({
         </Pressable>
       </View>
 
+      {reactionsEnabled(room) && (
+        <View style={s.reactionRow}>
+          <ReactionBar
+            game="doodle-clash"
+            code={code}
+            room={room}
+            accent="#A5E1EB"
+            disabled={touching || busy}
+          />
+
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <ReactionStrip
+              room={room}
+              uid={uid}
+            />
+          </View>
+        </View>
+      )}
+
       <RoundPanel
         key={`${room.matchNumber}-${room.phase}`}
         code={code}
@@ -775,6 +801,16 @@ const s = StyleSheet.create({
     borderRadius: 6,
   },
 
+  reactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#242841',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+
   canvasSection: {
     gap: 10,
   },
@@ -853,5 +889,6 @@ const s = StyleSheet.create({
     fontSize: 13,
   },
 });
+
 
 

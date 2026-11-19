@@ -61,7 +61,14 @@ import {
 } from './types';
 
 import SoundFeedback from './SoundFeedback';
-import ReactionBar from './ReactionBar';
+import ReactionBar from '../../multiplayer/ReactionBar';
+import ReactionStrip from '../../multiplayer/ReactionStrip';
+import ReactionBubble from '../../multiplayer/ReactionBubble';
+
+import {
+  getReaction,
+  reactionsEnabled,
+} from '../../multiplayer/reactions';
 
 import {
   MODE_NAMES,
@@ -427,6 +434,25 @@ function Match({
         </Pressable>
       </View>
 
+      {reactionsEnabled(room) && (
+        <View style={s.reactionRow}>
+          <ReactionBar
+            game="word-clash"
+            code={code}
+            room={room}
+            accent="#FFD071"
+            disabled={busy}
+          />
+
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <ReactionStrip
+              room={room}
+              uid={uid}
+            />
+          </View>
+        </View>
+      )}
+
       {finished ? (
         <View style={s.winnerPanel}>
           <Text style={s.trophy}>🏆</Text>
@@ -471,10 +497,7 @@ function Match({
         />
       )}
 
-      <ReactionBar
-        code={code}
-        room={room}
-      />
+
 
       <View style={s.panel}>
         <Text style={s.sectionTitle}>
@@ -516,6 +539,16 @@ function Match({
                     ? ` 🔥${room.streaks?.[id]}`
                     : ''}
                 </Text>
+
+                <View
+                  pointerEvents="none"
+                  style={s.scoreReaction}
+                >
+                  <ReactionBubble
+                    reaction={getReaction(room, id)}
+                    compact
+                  />
+                </View>
 
                 <Text style={s.points}>
                   {score}
@@ -1267,6 +1300,22 @@ const s = StyleSheet.create({
     fontWeight: '900',
     fontSize: 18,
   },
+  reactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#2B2843',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+
+  scoreReaction: {
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   scoreCard: {
     padding: 13,
     borderRadius: 12,
@@ -1352,6 +1401,7 @@ const s = StyleSheet.create({
     fontWeight: '900',
   },
 });
+
 
 
 

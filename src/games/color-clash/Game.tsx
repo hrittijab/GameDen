@@ -66,6 +66,14 @@ import {
 // CONFIGURATION
 // ==========================================
 
+import ReactionBar from '../../multiplayer/ReactionBar';
+import ReactionBubble from '../../multiplayer/ReactionBubble';
+
+import {
+  getReaction,
+  type Reaction,
+} from '../../multiplayer/reactions';
+
 const NATIVE_ANIMATION =
   Platform.OS !== 'web';
 
@@ -449,6 +457,7 @@ const PlayerSeat = memo(function PlayerSeat({
   host,
   departure,
   connection,
+  reaction,
 }: {
   name: string;
   count: number;
@@ -457,6 +466,7 @@ const PlayerSeat = memo(function PlayerSeat({
   uno: boolean;
   host: boolean;
   departure?: 'QUIT' | 'LEFT';
+  reaction?: Reaction;
   connection: ConnectionStatus;
 }) {
   return (
@@ -472,16 +482,30 @@ const PlayerSeat = memo(function PlayerSeat({
           s.departedSeat,
       ]}
     >
-      <Avatar
-        index={index}
-        active={active && !departure}
+      <View style={s.reactionAvatar}>
+        <Avatar
+          index={index}
+          active={active && !departure}
 
-        connection={
-          departure
-            ? undefined
-            : connection
-        }
-      />
+          connection={
+            departure
+              ? undefined
+              : connection
+          }
+        />
+
+        {!departure && (
+          <View
+            pointerEvents="none"
+            style={s.avatarReaction}
+          >
+            <ReactionBubble
+              reaction={reaction}
+              compact
+            />
+          </View>
+        )}
+      </View>
 
       <Text
         style={s.seatName}
@@ -1712,6 +1736,8 @@ export default function ColorClashGame() {
 
         name={playerName(playerId)}
 
+        reaction={getReaction(room, playerId)}
+
         count={
           room?.cardCounts?.[playerId] ?? 0
         }
@@ -2383,13 +2409,25 @@ export default function ColorClashGame() {
           ]}
         >
           <View style={s.selfHeader}>
-            <Avatar
-              index={myIndex}
+            <View style={s.reactionAvatar}>
+              <Avatar
+                index={myIndex}
 
-              active={!!myTurn}
+                active={!!myTurn}
 
-              connection={statusOf(uid)}
-            />
+                connection={statusOf(uid)}
+              />
+
+              <View
+                pointerEvents="none"
+                style={s.avatarReaction}
+              >
+                <ReactionBubble
+                  reaction={getReaction(room, uid)}
+                  compact
+                />
+              </View>
+            </View>
 
             <View>
               <Text style={s.seatName}>
@@ -2415,6 +2453,21 @@ export default function ColorClashGame() {
                 UNO ✓
               </Text>
             )}
+          </View>
+
+          <View style={s.reactionControls}>
+            <ReactionBar
+              game="color-clash"
+              code={code}
+              room={room}
+              accent="#A5E1EB"
+              disabled={
+                quitting ||
+                confirmQuit ||
+                !!wild ||
+                (!!ownWindow && !unoConfirmed)
+              }
+            />
           </View>
 
           <ScrollView
@@ -2933,6 +2986,26 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
     position: 'relative',
+  },
+
+  reactionAvatar: {
+    position: 'relative',
+    overflow: 'visible',
+    zIndex: 10,
+  },
+
+  avatarReaction: {
+    position: 'absolute',
+    top: -25,
+    right: -14,
+    zIndex: 40,
+    elevation: 8,
+  },
+
+  reactionControls: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 3,
   },
 
   avatarActive: {
@@ -3512,5 +3585,6 @@ const s = StyleSheet.create({
     borderRadius: 2,
   },
 });
+
 
 
