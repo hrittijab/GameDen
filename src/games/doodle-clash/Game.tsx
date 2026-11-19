@@ -38,6 +38,7 @@ import {
 } from '../../multiplayer/session';
 
 import Canvas from './Canvas';
+import RoundPanel from './RoundPanel';
 import DrawingTools from './DrawingTools';
 
 import {
@@ -159,6 +160,7 @@ function Match({ code }: { code: string }) {
     member &&
     synchronized &&
     room?.status === 'playing' &&
+    room.phase === 'drawing' &&
     room.artistId === uid;
 
   const isHost =
@@ -483,6 +485,13 @@ function Match({ code }: { code: string }) {
         </Pressable>
       </View>
 
+      <RoundPanel
+        key={`${room.matchNumber}-${room.phase}`}
+        code={code}
+        room={room}
+        uid={uid}
+      />
+
       {room.status === 'finished' ? (
         <View style={s.panel}>
           <Text style={s.title}>
@@ -490,7 +499,7 @@ function Match({ code }: { code: string }) {
           </Text>
 
           <Text style={s.caption}>
-            At least two players are required.
+            Check the final scores above.
           </Text>
 
           {isHost && players.length >= 2 && (
@@ -509,7 +518,7 @@ function Match({ code }: { code: string }) {
         <>
           <View style={s.panel}>
             <Text style={s.eyebrow}>
-              {isArtist ? 'ARTIST MODE' : 'VIEWER MODE'}
+              {room.phase === 'choosing' ? 'WORD SELECTION' : room.phase === 'results' ? 'ROUND RESULTS' : isArtist ? 'ARTIST MODE' : 'VIEWER MODE'}
             </Text>
 
             <Text style={s.artistTitle}>
@@ -527,7 +536,7 @@ function Match({ code }: { code: string }) {
             </Text>
           </View>
 
-          {synchronized && drawing ? (
+          {!room.phase || room.phase === 'choosing' ? null : synchronized && drawing ? (
             <View
               onTouchStart={() => {
                 if (canDraw) setTouching(true);
@@ -757,3 +766,4 @@ const s = StyleSheet.create({
     color: '#FF9AAE',
   },
 });
+

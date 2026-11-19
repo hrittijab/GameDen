@@ -36,6 +36,10 @@ export {
 export {
   startDoodleClashMatch,
   updateDoodleClashDrawing,
+  getDoodleClashWord,
+  selectDoodleClashWord,
+  guessDoodleClashWord,
+  advanceDoodleClashRound,
 } from './doodle-clash/handlers';
 
 // ==========================================
@@ -47,3 +51,4 @@ export {
   leaveDoodleClashRoom,
   kickDoodleClashPlayer,
 } from './doodle-clash/lifecycle';
+

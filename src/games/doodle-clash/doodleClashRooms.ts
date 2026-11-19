@@ -30,6 +30,22 @@ export type DoodleRoom = MultiplayerRoom & {
   artistId: string | null;
   playerOrder: string[];
   matchNumber: number;
+
+  phase: 'choosing' | 'drawing' | 'results' | 'finished';
+
+  deadline: number;
+  roundNumber: number;
+  totalRounds: number;
+
+  pendingArtists: string[];
+
+  scores: Record<string, number>;
+  roundPoints: Record<string, number>;
+
+  guessedIds: string[];
+
+  hint: string;
+  revealedWord: string | null;
 };
 
 export type DrawingState = {
@@ -113,3 +129,4 @@ export async function updateDrawing(
 
   return result.drawing;
 }
+

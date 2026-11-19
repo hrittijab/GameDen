@@ -13,9 +13,12 @@ import {
 } from './config';
 
 import {
-  emptyDrawing,
-  type DoodleRoom,
-} from './engine';
+  advanceRound,
+  finishRound,
+  finishMatch,
+  type RoundRoom,
+  type RoundSecret,
+} from './rounds';
 
 async function handleDeparture(
   context: DepartureContext,
@@ -30,7 +33,7 @@ async function handleDeparture(
     remainingIds,
   } = context;
 
-  const room = context.room as DoodleRoom;
+  const room = context.room as RoundRoom;
 
   const drawingRef = roomRef
     .collection('drawing')
@@ -45,9 +48,18 @@ async function handleDeparture(
     return { success: true };
   }
 
-  const playerOrder = room.playerOrder.filter(
-    id => id !== targetUid,
-  );
+  // Firestore transaction reads must happen
+  // before transaction writes.
+
+  const secretSnap = await tx.get(secretRef);
+
+  const playerOrder = (
+    room.playerOrder ?? Object.keys(room.players)
+  ).filter(id => id !== targetUid);
+
+  const pendingArtists = (
+    room.pendingArtists ?? []
+  ).filter(id => id !== targetUid);
 
   const hostId = nextHost(
     room.hostId,
@@ -55,38 +67,83 @@ async function handleDeparture(
     remainingIds,
   );
 
-  const update: Partial<DoodleRoom> = {
-    players: remainingPlayers,
-    playerOrder,
-    hostId,
+  const scores = {
+    ...room.scores,
   };
 
-  if (remainingIds.length < 2) {
-    update.status = 'finished';
-    update.artistId = null;
-  } else if (
-    room.status === 'playing' &&
-    room.artistId === targetUid
+  const roundPoints = {
+    ...room.roundPoints,
+  };
+
+  delete scores[targetUid];
+  delete roundPoints[targetUid];
+
+  const updates: Partial<RoundRoom> = {
+    hostId,
+    players: remainingPlayers,
+    playerOrder,
+    pendingArtists,
+    scores,
+    roundPoints,
+  };
+
+  if (
+    remainingIds.length < 2 ||
+    room.status === 'finished' ||
+    !secretSnap.exists
   ) {
-    const matchNumber = room.matchNumber + 1;
-
-    update.artistId = playerOrder[0];
-    update.matchNumber = matchNumber;
-
-    tx.set(
-      drawingRef,
-      emptyDrawing(matchNumber),
+    finishMatch(
+      tx,
+      roomRef,
+      secretRef,
+      updates,
     );
+
+    tx.delete(presenceRef);
+
+    return { success: true };
   }
 
-  tx.update(roomRef, update);
+  const secret = secretSnap.data() as RoundSecret;
+
+  const updatedRoom: RoundRoom = {
+    ...room,
+    ...updates,
+  };
+
+  tx.update(roomRef, updates);
+
+  if (room.artistId === targetUid) {
+    advanceRound(
+      tx,
+      roomRef,
+      secretRef,
+      updatedRoom,
+      secret,
+    );
+  } else if (room.phase === 'drawing') {
+    const everyoneGuessed = remainingIds
+      .filter(id => id !== room.artistId)
+      .every(id => room.guessedIds.includes(id));
+
+    if (everyoneGuessed) {
+      finishRound(
+        tx,
+        roomRef,
+        secret,
+      );
+    }
+  }
+
   tx.delete(presenceRef);
 
   return { success: true };
 }
 
 export const heartbeatDoodleClash =
-  createHeartbeatHandler(DOODLE_CLASH_CONFIG);
+  createHeartbeatHandler(
+    DOODLE_CLASH_CONFIG,
+  );
 
 const lifecycle = createLifecycleHandlers(
   DOODLE_CLASH_CONFIG,
