@@ -37,35 +37,44 @@ import {
   clearSession,
 } from '../../multiplayer/session';
 
-import Canvas from './Canvas';
-import RoundPanel from './RoundPanel';
-import DrawingTools from './DrawingTools';
-
 import {
   DOODLE_CLASH_CONFIG,
 } from './config';
 
 import {
   subscribeToDoodleRoom,
-  subscribeToDrawing,
-  updateDrawing,
   type DoodleRoom,
-  type DrawingState,
-  type DrawingAction,
 } from './doodleClashRooms';
 
+import {
+  maintainMatch,
+} from './liveDrawing';
+
+import {
+  useDrawingSync,
+} from './useDrawingSync';
+
+import Canvas from './Canvas';
+import DrawingTools from './DrawingTools';
+import RoundPanel from './RoundPanel';
+import SoundFeedback from './SoundFeedback';
+
 import type {
-  Stroke,
   DrawingTool,
 } from './types';
 
-function message(error: unknown): string {
+const LOBBY =
+  '/multiplayer/doodle-clash' as Href;
+
+function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : 'Something went wrong.';
 }
 
 export default function DoodleClashGame() {
+  const router = useRouter();
+
   const params = useLocalSearchParams<{
     code?: string;
   }>();
@@ -76,36 +85,32 @@ export default function DoodleClashGame() {
       : '';
 
   if (!/^[A-HJ-NP-Z2-9]{8}$/.test(code)) {
-    return <InvalidRoom />;
+    return (
+      <View style={s.center}>
+        <Text style={s.title}>
+          Invalid room code
+        </Text>
+
+        <Pressable
+          style={s.button}
+          onPress={() => router.replace(LOBBY)}
+        >
+          <Text style={s.buttonText}>
+            Return to lobby
+          </Text>
+        </Pressable>
+      </View>
+    );
   }
 
   return <Match key={code} code={code} />;
 }
 
-function InvalidRoom() {
-  const router = useRouter();
-
-  return (
-    <View style={s.center}>
-      <Text style={s.title}>
-        Invalid room code
-      </Text>
-
-      <Pressable
-        style={s.button}
-        onPress={() => router.replace(
-          '/multiplayer/doodle-clash' as Href
-        )}
-      >
-        <Text style={s.buttonText}>
-          Return to lobby
-        </Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function Match({ code }: { code: string }) {
+function Match({
+  code,
+}: {
+  code: string;
+}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -114,8 +119,14 @@ function Match({ code }: { code: string }) {
   const [room, setRoom] =
     useState<DoodleRoom | null>(null);
 
-  const [drawing, setDrawing] =
-    useState<DrawingState | null>(null);
+  const [loading, setLoading] =
+    useState(true);
+
+  const [busy, setBusy] =
+    useState(false);
+
+  const [error, setError] =
+    useState('');
 
   const [color, setColor] =
     useState('#171717');
@@ -126,101 +137,91 @@ function Match({ code }: { code: string }) {
   const [tool, setTool] =
     useState<DrawingTool>('brush');
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [busy, setBusy] =
-    useState(false);
-
   const [touching, setTouching] =
     useState(false);
 
-  const [error, setError] =
-    useState('');
+  const [soundEnabled, setSoundEnabled] =
+    useState(true);
 
+  const leaving = useRef(false);
   const lock = useRef(false);
-  const exiting = useRef(false);
 
   const member = !!(
     room &&
     uid &&
     Object.prototype.hasOwnProperty.call(
       room.players,
-      uid
+      uid,
     )
-  );
-
-  const synchronized = !!(
-    room &&
-    drawing &&
-    room.matchNumber === drawing.matchNumber
   );
 
   const isArtist =
     member &&
-    synchronized &&
     room?.status === 'playing' &&
     room.phase === 'drawing' &&
     room.artistId === uid;
 
   const isHost =
-    member && room?.hostId === uid;
+    member &&
+    room?.hostId === uid;
+
+  const sync = useDrawingSync(
+    code,
+    room,
+    member,
+    isArtist,
+  );
+
+  const {
+    statusOf,
+  } = useMultiplayerPresence(
+    DOODLE_CLASH_CONFIG.presence,
+    code,
+    member,
+  );
+
+  const players = room
+    ? room.playerOrder ??
+      Object.keys(room.players)
+    : [];
+
+  const coordinator = room
+    ? [
+        room.hostId,
+        ...players.filter(
+          id => id !== room.hostId,
+        ),
+      ].find(
+        id => statusOf(id) === 'online',
+      ) ?? room.hostId
+    : '';
 
   const canDraw =
-    isArtist && !busy;
-
-  const { statusOf } =
-    useMultiplayerPresence(
-      DOODLE_CLASH_CONFIG.presence,
-      code,
-      member,
-    );
-
-  function acceptDrawing(
-    incoming: DrawingState | null,
-  ) {
-    if (!incoming) return;
-
-    setDrawing(previous => {
-      if (!previous) return incoming;
-
-      if (
-        incoming.matchNumber <
-        previous.matchNumber
-      ) {
-        return previous;
-      }
-
-      if (
-        incoming.matchNumber === previous.matchNumber &&
-        incoming.revision < previous.revision
-      ) {
-        return previous;
-      }
-
-      return incoming;
-    });
-  }
+    isArtist &&
+    sync.synchronized &&
+    !busy &&
+    sync.queued < 30;
 
   useEffect(() => {
     let alive = true;
+    let unsubscribe = () => {};
 
-    let unsubscribeRoom =
-      () => {};
-
-    async function connect() {
-      try {
-        const user = await getMatchUser();
-
+    void getMatchUser()
+      .then(user => {
         if (!alive) return;
 
         setUid(user.uid);
 
-        unsubscribeRoom = subscribeToDoodleRoom(
+        unsubscribe = subscribeToDoodleRoom(
           code,
 
           value => {
-            if (!alive || exiting.current) return;
+            if (
+              !alive ||
+              leaving.current
+            ) {
+              return;
+            }
 
             setRoom(value);
             setLoading(false);
@@ -233,42 +234,31 @@ function Match({ code }: { code: string }) {
               )
             ) {
               setError(
-                'You are no longer in this room.'
+                'You are no longer in this room.',
               );
             }
           },
 
           reason => {
             if (!alive) return;
+
             setError(reason);
             setLoading(false);
           },
         );
-      } catch (reason) {
+      })
+      .catch(reason => {
         if (!alive) return;
 
-        setError(message(reason));
+        setError(errorMessage(reason));
         setLoading(false);
-      }
-    }
-
-    void connect();
+      });
 
     return () => {
       alive = false;
-      unsubscribeRoom();
+      unsubscribe();
     };
   }, [code]);
-
-  useEffect(() => {
-    if (!member) return;
-
-    return subscribeToDrawing(
-      code,
-      acceptDrawing,
-      setError,
-    );
-  }, [code, member]);
 
   useEffect(() => {
     if (!member) return;
@@ -280,73 +270,66 @@ function Match({ code }: { code: string }) {
   }, [code, member]);
 
   useEffect(() => {
-    if (!isArtist) {
-      setTouching(false);
-    }
-  }, [isArtist]);
-
-  async function sendAction(
-    action: DrawingAction,
-    stroke?: Stroke,
-  ) {
     if (
-      lock.current ||
-      !isArtist ||
-      !drawing
+      !member ||
+      !room ||
+      room.status !== 'playing' ||
+      coordinator !== uid
     ) {
       return;
     }
 
-    lock.current = true;
+    let alive = true;
+    let pending = false;
 
-    setBusy(true);
-    setError('');
+    async function check() {
+      if (!alive || pending || !room) return;
 
-    try {
-      const updated = await updateDrawing(
-        code,
-        drawing,
-        action,
-        stroke,
-      );
+      pending = true;
 
-      acceptDrawing(updated);
-    } catch (reason) {
-      setError(message(reason));
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  }
-
-  function addStroke(stroke: Stroke) {
-    let points = stroke.points;
-
-    if (points.length > 500) {
-      const original = points;
-
-      points = Array.from(
-        { length: 500 },
-        (_, index) =>
-          original[
-            Math.round(
-              index * (original.length - 1) / 499
-            )
-          ],
-      );
+      try {
+        await maintainMatch(
+          code,
+          room.matchNumber,
+        );
+      } catch {
+        // Maintenance retries automatically.
+      } finally {
+        pending = false;
+      }
     }
 
-    void sendAction('add', {
-      ...stroke,
-      points,
-    });
-  }
+    void check();
+
+    const timer = setInterval(
+      () => void check(),
+      5000,
+    );
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [
+    code,
+    uid,
+    member,
+    coordinator,
+    room?.matchNumber,
+    room?.status,
+  ]);
+
+  useEffect(() => {
+    if (!canDraw) {
+      setTouching(false);
+    }
+  }, [canDraw]);
 
   async function leave() {
     if (lock.current) return;
 
     lock.current = true;
-    exiting.current = true;
+    leaving.current = true;
 
     setBusy(true);
     setError('');
@@ -361,12 +344,10 @@ function Match({ code }: { code: string }) {
 
       await clearSession('doodle-clash');
 
-      router.replace(
-        '/multiplayer/doodle-clash' as Href
-      );
+      router.replace(LOBBY);
     } catch (reason) {
-      exiting.current = false;
-      setError(message(reason));
+      leaving.current = false;
+      setError(errorMessage(reason));
     } finally {
       lock.current = false;
       setBusy(false);
@@ -383,13 +364,14 @@ function Match({ code }: { code: string }) {
     }
 
     lock.current = true;
+
     setBusy(true);
     setError('');
 
     try {
       await DOODLE_CLASH_CONFIG.startMatch(code);
     } catch (reason) {
-      setError(message(reason));
+      setError(errorMessage(reason));
     } finally {
       lock.current = false;
       setBusy(false);
@@ -400,18 +382,18 @@ function Match({ code }: { code: string }) {
     return (
       <View style={s.center}>
         <ActivityIndicator
-          color="#A5E1EB"
           size="large"
+          color="#A5E1EB"
         />
 
         <Text style={s.caption}>
-          Connecting to room...
+          Connecting to your match...
         </Text>
       </View>
     );
   }
 
-  if (!member || !room) {
+  if (!room || !member) {
     return (
       <View style={s.center}>
         <Text style={s.title}>
@@ -423,9 +405,9 @@ function Match({ code }: { code: string }) {
         </Text>
 
         <Pressable
+          disabled={busy}
           style={s.button}
           onPress={() => void leave()}
-          disabled={busy}
         >
           <Text style={s.buttonText}>
             Return to lobby
@@ -435,49 +417,60 @@ function Match({ code }: { code: string }) {
     );
   }
 
-  const artistName =
-    room.artistId
-      ? room.players[room.artistId]
-      : '';
-
-  const players =
-    room.playerOrder ??
-    Object.keys(room.players);
-
   return (
     <ScrollView
       style={s.root}
       scrollEnabled={!touching}
+      keyboardShouldPersistTaps="handled"
       contentContainerStyle={[
         s.content,
         {
-          paddingTop: Math.max(insets.top + 15, 30),
-          paddingBottom: insets.bottom + 30,
+          paddingTop: Math.max(
+            insets.top + 12,
+            24,
+          ),
+          paddingBottom: insets.bottom + 24,
         },
       ]}
     >
+      <SoundFeedback
+        room={room}
+        uid={uid}
+        enabled={soundEnabled}
+      />
+
       <View style={s.header}>
         <View style={{ flex: 1 }}>
-          <Text style={s.eyebrow}>
-            MULTIPLAYER ROOM
-          </Text>
-
           <Text style={s.title}>
             Doodle Clash
           </Text>
 
           <Text style={s.caption}>
-            Room: {code}
+            Room {code}
           </Text>
         </View>
 
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            soundEnabled
+              ? 'Mute game sounds'
+              : 'Enable game sounds'
+          }
+          onPress={() =>
+            setSoundEnabled(value => !value)
+          }
+          style={s.soundButton}
+        >
+          <Text style={s.buttonText}>
+            {soundEnabled ? 'Sound on' : 'Muted'}
+          </Text>
+        </Pressable>
+
+        <Pressable
           disabled={busy}
           onPress={() => void leave()}
-          style={[
-            s.leaveButton,
-            busy && s.disabled,
-          ]}
+          style={s.leaveButton}
         >
           <Text style={s.leaveText}>
             Leave
@@ -490,148 +483,136 @@ function Match({ code }: { code: string }) {
         code={code}
         room={room}
         uid={uid}
-      />
-
-      {room.status === 'finished' ? (
-        <View style={s.panel}>
-          <Text style={s.title}>
-            Session ended
-          </Text>
-
-          <Text style={s.caption}>
-            Check the final scores above.
-          </Text>
-
-          {isHost && players.length >= 2 && (
-            <Pressable
-              disabled={busy}
-              onPress={() => void rematch()}
-              style={s.button}
-            >
-              <Text style={s.buttonText}>
-                Play again
-              </Text>
-            </Pressable>
-          )}
-        </View>
-      ) : (
-        <>
-          <View style={s.panel}>
-            <Text style={s.eyebrow}>
-              {room.phase === 'choosing' ? 'WORD SELECTION' : room.phase === 'results' ? 'ROUND RESULTS' : isArtist ? 'ARTIST MODE' : 'VIEWER MODE'}
-            </Text>
-
-            <Text style={s.artistTitle}>
-              {isArtist
-                ? 'Your turn to draw'
-                : `${artistName || 'The artist'} is drawing`}
-            </Text>
-
-            <Text style={s.caption}>
-              {busy
-                ? 'Synchronizing drawing...'
-                : isArtist
-                  ? 'Create something for your friends.'
-                  : 'Watch the shared canvas.'}
-            </Text>
-          </View>
-
-          {!room.phase || room.phase === 'choosing' ? null : synchronized && drawing ? (
+      >
+        {sync.synchronized ? (
+          <View style={s.canvasSection}>
             <View
               onTouchStart={() => {
-                if (canDraw) setTouching(true);
+                if (canDraw) {
+                  setTouching(true);
+                }
               }}
               onTouchEnd={() => setTouching(false)}
               onTouchCancel={() => setTouching(false)}
             >
               <Canvas
                 key={room.matchNumber}
-                strokes={drawing.strokes}
+                strokes={sync.strokes}
                 color={color}
                 brushSize={brushSize}
                 tool={tool}
                 canDraw={canDraw}
-                onStrokeComplete={addStroke}
+                onStrokeProgress={sync.progress}
+                onStrokeComplete={stroke =>
+                  sync.enqueue('add', stroke)
+                }
               />
             </View>
-          ) : (
-            <View style={s.panel}>
-              <ActivityIndicator color="#A5E1EB" />
 
-              <Text style={s.caption}>
-                Loading shared drawing...
-              </Text>
-            </View>
-          )}
+            {isArtist && (
+              <>
+                <DrawingTools
+                  color={color}
+                  brushSize={brushSize}
+                  tool={tool}
+                  canUndo={
+                    sync.queued === 0 &&
+                    !!sync.drawing?.strokes.length
+                  }
+                  canRedo={
+                    sync.queued === 0 &&
+                    !!sync.drawing?.redoStack.length
+                  }
+                  onColorChange={setColor}
+                  onSizeChange={setBrushSize}
+                  onToolChange={setTool}
+                  onUndo={() => sync.enqueue('undo')}
+                  onRedo={() => sync.enqueue('redo')}
+                  onClear={() => sync.enqueue('clear')}
+                />
 
-          {isArtist && drawing && (
-            <View
-              pointerEvents={busy ? 'none' : 'auto'}
-              style={busy && s.disabled}
-            >
-              <DrawingTools
-                color={color}
-                brushSize={brushSize}
-                tool={tool}
-                canUndo={drawing.strokes.length > 0}
-                canRedo={drawing.redoStack.length > 0}
-                onColorChange={setColor}
-                onSizeChange={setBrushSize}
-                onToolChange={setTool}
-                onUndo={() => void sendAction('undo')}
-                onRedo={() => void sendAction('redo')}
-                onClear={() => void sendAction('clear')}
-              />
-            </View>
-          )}
+                <Text style={s.caption}>
+                  {sync.queued > 0
+                    ? 'Saving drawing...'
+                    : 'Drawing synchronized'}
+                </Text>
+              </>
+            )}
+          </View>
+        ) : (
+          <ActivityIndicator
+            color="#A5E1EB"
+          />
+        )}
+      </RoundPanel>
 
-          <Text style={s.caption}>
-            Strokes: {drawing?.strokes.length ?? 0}
-            {' / 250'}
-          </Text>
-        </>
-      )}
+      {room.status === 'finished' &&
+        isHost &&
+        players.length >= 2 && (
+          <Pressable
+            disabled={busy}
+            style={s.button}
+            onPress={() => void rematch()}
+          >
+            <Text style={s.buttonText}>
+              Play again
+            </Text>
+          </Pressable>
+        )}
 
-      {!!error && (
+      {(error || sync.error) !== '' && (
         <Text style={s.error}>
-          {error}
+          {error || sync.error}
         </Text>
       )}
 
-      <View style={s.panel}>
+      <View style={s.playerPanel}>
         <Text style={s.sectionTitle}>
           Players ({players.length})
         </Text>
 
-        {players.map(id => (
-          <View key={id} style={s.player}>
+        {players.map(id => {
+          const status = statusOf(id);
+
+          return (
             <View
-              style={[
-                s.dot,
-                {
-                  backgroundColor:
-                    statusOf(id) === 'online'
-                      ? '#42D99A'
-                      : statusOf(id) === 'connecting'
-                        ? '#FFD071'
-                        : '#E57383',
-                },
-              ]}
-            />
+              key={id}
+              style={s.player}
+            >
+              <View
+                style={[
+                  s.dot,
+                  {
+                    backgroundColor:
+                      status === 'online'
+                        ? '#55D99A'
+                        : status === 'connecting'
+                          ? '#FFD071'
+                          : '#FF8398',
+                  },
+                ]}
+              />
 
-            <Text style={s.playerName}>
-              {room.players[id]}
-              {id === uid ? ' (You)' : ''}
-              {id === room.hostId ? ' - Host' : ''}
-            </Text>
-
-            {id === room.artistId && (
-              <Text style={s.artistLabel}>
-                ARTIST
+              <Text style={s.playerName}>
+                {room.players[id]}
+                {id === uid ? ' (You)' : ''}
+                {id === room.hostId ? ' - Host' : ''}
               </Text>
-            )}
-          </View>
-        ))}
+
+              {room.artistId === id && (
+                <Text style={s.artistLabel}>
+                  ARTIST
+                </Text>
+              )}
+
+              {status === 'offline' && (
+                <Text style={s.caption}>
+                  Offline
+                </Text>
+              )}
+            </View>
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -645,107 +626,103 @@ const s = StyleSheet.create({
 
   center: {
     flex: 1,
-    backgroundColor: '#121629',
-    justifyContent: 'center',
+    padding: 24,
     alignItems: 'center',
-    padding: 25,
-    gap: 18,
+    justifyContent: 'center',
+    backgroundColor: '#121629',
+    gap: 16,
   },
 
   content: {
     width: '100%',
-    maxWidth: 850,
+    maxWidth: 760,
     alignSelf: 'center',
-    paddingHorizontal: 18,
-    gap: 16,
+    paddingHorizontal: 12,
+    gap: 12,
   },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
 
   title: {
     color: '#FFFFFF',
-    fontSize: 30,
     fontWeight: '900',
-  },
-
-  eyebrow: {
-    color: '#C5BAFF',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-  },
-
-  caption: {
-    color: '#A6A9C4',
-    fontSize: 13,
-    lineHeight: 20,
-  },
-
-  panel: {
-    backgroundColor: '#242841',
-    padding: 18,
-    borderRadius: 16,
-    gap: 10,
-  },
-
-  artistTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#FFFFFF',
+    fontSize: 24,
   },
 
   sectionTitle: {
     color: '#FFFFFF',
-    fontSize: 19,
-    fontWeight: '900',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+
+  caption: {
+    color: '#A6A9C4',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  canvasSection: {
+    gap: 10,
   },
 
   button: {
     backgroundColor: '#A5E1EB',
+    padding: 14,
     borderRadius: 12,
-    padding: 15,
     alignItems: 'center',
+  },
+
+  soundButton: {
+    backgroundColor: '#A5E1EB',
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    borderRadius: 10,
   },
 
   buttonText: {
     color: '#121629',
+    fontSize: 12,
     fontWeight: '900',
   },
 
   leaveButton: {
     backgroundColor: '#593044',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    borderRadius: 10,
   },
 
   leaveText: {
     color: '#FFB5C4',
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '900',
   },
 
-  disabled: {
-    opacity: 0.6,
+  playerPanel: {
+    padding: 14,
+    backgroundColor: '#242841',
+    borderRadius: 16,
+    gap: 8,
   },
 
   player: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#303550',
+    padding: 10,
+    gap: 8,
     borderRadius: 10,
-    padding: 12,
+    backgroundColor: '#303550',
   },
 
   playerName: {
     flex: 1,
-    fontSize: 14,
     color: '#FFFFFF',
     fontWeight: '700',
+    fontSize: 13,
   },
 
   artistLabel: {
@@ -755,15 +732,14 @@ const s = StyleSheet.create({
   },
 
   dot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 
   error: {
-    fontSize: 13,
-    lineHeight: 20,
     color: '#FF9AAE',
+    lineHeight: 20,
+    fontSize: 13,
   },
 });
-

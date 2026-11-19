@@ -1,3 +1,4 @@
+import { evaluateGuess } from './intelligence';
 import {
   HttpsError,
   onCall,
@@ -144,6 +145,10 @@ export const startDoodleClashMatch = onCall(
           usedWords: [],
         },
       );
+
+      tx.update(roomRef, {
+        matchStartedAt: Date.now(),
+      });
 
       return { success: true };
     });
@@ -356,14 +361,18 @@ export const guessDoodleClashWord = onCall(
         },
       });
 
-      const correct =
-        normalizeWord(guess) ===
-        normalizeWord(secret.answer);
+      const evaluation = evaluateGuess(
+        guess,
+        secret.answer,
+      );
+
+      const correct = evaluation === 'correct';
 
       if (!correct) {
         return {
           success: true,
           correct: false,
+          close: evaluation === 'close',
           points: 0,
         };
       }
@@ -428,6 +437,7 @@ export const guessDoodleClashWord = onCall(
       return {
         success: true,
         correct: true,
+        close: false,
         points,
       };
     });
@@ -575,6 +585,10 @@ export const updateDoodleClashDrawing = onCall(
 
       if (updated !== current) {
         tx.set(drawingRef, updated);
+
+        tx.delete(
+          roomRef.collection('preview').doc('current'),
+        );
       }
 
       return {
@@ -584,5 +598,8 @@ export const updateDoodleClashDrawing = onCall(
     });
   },
 );
+
+
+
 
 

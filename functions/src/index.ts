@@ -52,3 +52,11 @@ export {
   kickDoodleClashPlayer,
 } from './doodle-clash/lifecycle';
 
+
+export {
+  previewDoodleClashStroke,
+} from './doodle-clash/liveDrawing';
+
+export {
+  maintainDoodleClashMatch,
+} from './doodle-clash/maintenance';

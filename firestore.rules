@@ -224,6 +224,14 @@ service cloud.firestore {
 
       allow delete: if false;
 
+      match /preview/{previewId} {
+
+        allow get: if isMember()
+          && previewId == 'current';
+
+        allow list, create, update, delete: if false;
+      }
+
       match /drawing/{drawingId} {
 
         allow get: if isMember()
@@ -246,5 +254,6 @@ service cloud.firestore {
 
   }
 }
+
 
 

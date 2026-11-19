@@ -20,7 +20,7 @@ import {
   type RoundSecret,
 } from './rounds';
 
-async function handleDeparture(
+export async function handleDeparture(
   context: DepartureContext,
 ) {
   const {
@@ -41,6 +41,7 @@ async function handleDeparture(
 
   if (!remainingIds.length) {
     tx.delete(drawingRef);
+    tx.delete(roomRef.collection('preview').doc('current'));
     tx.delete(secretRef);
     tx.delete(presenceRef);
     tx.delete(roomRef);
@@ -83,6 +84,7 @@ async function handleDeparture(
     players: remainingPlayers,
     playerOrder,
     pendingArtists,
+    totalRounds: room.roundNumber + pendingArtists.length,
     scores,
     roundPoints,
   };
@@ -155,3 +157,4 @@ export const leaveDoodleClashRoom =
 
 export const kickDoodleClashPlayer =
   lifecycle.kick;
+

@@ -49,6 +49,7 @@ export function submitGuess(
   return callServer<{
     success: boolean;
     correct: boolean;
+    close: boolean;
     points: number;
   }>(
     'guessDoodleClashWord',
@@ -73,3 +74,4 @@ export function advancePhase(
     },
   );
 }
+

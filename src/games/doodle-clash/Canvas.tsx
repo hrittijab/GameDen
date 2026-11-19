@@ -1,12 +1,19 @@
-import { useRef, useState } from 'react';
+import {
+  useRef,
+  useState,
+} from 'react';
 
 import {
   View,
   StyleSheet,
   type GestureResponderEvent,
+  type LayoutChangeEvent,
 } from 'react-native';
 
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, {
+  Path,
+  Circle,
+} from 'react-native-svg';
 
 import {
   CANVAS_WIDTH,
@@ -23,16 +30,45 @@ type Props = {
   tool: DrawingTool;
   canDraw: boolean;
   onStrokeComplete: (stroke: Stroke) => void;
+  onStrokeProgress?: (stroke: Stroke) => void;
 };
 
-function createPath(points: Point[]): string {
-  if (!points.length) return '';
+function StrokeShape({
+  stroke,
+}: {
+  stroke: Stroke;
+}) {
+  if (!stroke.points.length) return null;
 
-  return points
+  if (stroke.points.length === 1) {
+    const point = stroke.points[0];
+
+    return (
+      <Circle
+        cx={point.x}
+        cy={point.y}
+        r={stroke.width / 2}
+        fill={stroke.color}
+      />
+    );
+  }
+
+  const path = stroke.points
     .map((point, index) =>
-      `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
+      `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`,
     )
     .join(' ');
+
+  return (
+    <Path
+      d={path}
+      stroke={stroke.color}
+      strokeWidth={stroke.width}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+  );
 }
 
 export default function Canvas({
@@ -42,55 +78,73 @@ export default function Canvas({
   tool,
   canDraw,
   onStrokeComplete,
+  onStrokeProgress,
 }: Props) {
-  const [layout, setLayout] = useState({
-    width: 1,
-    height: 1,
+  const [size, setSize] = useState({
+    width: 0,
+    height: 0,
   });
 
   const [draft, setDraft] =
     useState<Stroke | null>(null);
 
-  const activeStroke =
+  const active =
     useRef<Stroke | null>(null);
 
   const sequence = useRef(0);
 
+  function layout(event: LayoutChangeEvent) {
+    const { width, height } =
+      event.nativeEvent.layout;
+
+    setSize({ width, height });
+  }
+
   function getPoint(
-    event: GestureResponderEvent
+    event: GestureResponderEvent,
   ): Point {
     const { locationX, locationY } =
       event.nativeEvent;
 
     return {
-      x: Math.max(
-        0,
-        Math.min(
-          CANVAS_WIDTH,
-          locationX / layout.width * CANVAS_WIDTH
-        )
+      x: Math.round(
+        Math.max(
+          0,
+          Math.min(
+            CANVAS_WIDTH,
+            locationX /
+              Math.max(1, size.width) *
+              CANVAS_WIDTH,
+          ),
+        ),
       ),
-      y: Math.max(
-        0,
-        Math.min(
-          CANVAS_HEIGHT,
-          locationY / layout.height * CANVAS_HEIGHT
-        )
+      y: Math.round(
+        Math.max(
+          0,
+          Math.min(
+            CANVAS_HEIGHT,
+            locationY /
+              Math.max(1, size.height) *
+              CANVAS_HEIGHT,
+          ),
+        ),
       ),
     };
   }
 
-  function beginStroke(
-    event: GestureResponderEvent
+  function begin(
+    event: GestureResponderEvent,
   ) {
     if (!canDraw) return;
 
     sequence.current += 1;
 
     const stroke: Stroke = {
-      id: `${Date.now()}-${sequence.current}`,
+      id: `${Date.now()}-${sequence.current}-${Math.random().toString(36).slice(2, 9)}`,
       color:
-        tool === 'eraser' ? '#FFFFFF' : color,
+        tool === 'eraser'
+          ? '#FFFFFF'
+          : color,
       width:
         tool === 'eraser'
           ? brushSize * 2
@@ -98,72 +152,81 @@ export default function Canvas({
       points: [getPoint(event)],
     };
 
-    activeStroke.current = stroke;
+    active.current = stroke;
     setDraft(stroke);
+
+    onStrokeProgress?.(stroke);
   }
 
-  function moveStroke(
-    event: GestureResponderEvent
+  function move(
+    event: GestureResponderEvent,
   ) {
-    if (!canDraw || !activeStroke.current) {
-      return;
-    }
+    const previous = active.current;
 
-    const current = activeStroke.current;
+    if (!canDraw || !previous) return;
+
     const point = getPoint(event);
 
-    const previous =
-      current.points[current.points.length - 1];
+    const last =
+      previous.points[previous.points.length - 1];
 
     if (
       Math.hypot(
-        point.x - previous.x,
-        point.y - previous.y
+        point.x - last.x,
+        point.y - last.y,
       ) < 2
     ) {
       return;
     }
 
+    let points = [
+      ...previous.points,
+      point,
+    ];
+
+    if (points.length > 500) {
+      const end = points[points.length - 1];
+
+      points = points.filter(
+        (_, index) => index % 2 === 0,
+      );
+
+      if (points[points.length - 1] !== end) {
+        points.push(end);
+      }
+    }
+
     const updated: Stroke = {
-      ...current,
-      points: [...current.points, point],
+      ...previous,
+      points,
     };
 
-    activeStroke.current = updated;
+    active.current = updated;
     setDraft(updated);
+
+    onStrokeProgress?.(updated);
   }
 
-  function finishStroke() {
-    const completed = activeStroke.current;
+  function finish() {
+    const stroke = active.current;
 
-    activeStroke.current = null;
+    active.current = null;
     setDraft(null);
 
-    if (completed && canDraw) {
-      onStrokeComplete(completed);
+    if (stroke && canDraw) {
+      onStrokeComplete(stroke);
     }
   }
 
-  function cancelStroke() {
-    activeStroke.current = null;
+  function cancel() {
+    active.current = null;
     setDraft(null);
   }
 
-  const visibleStrokes = draft
-    ? [...strokes, draft]
-    : strokes;
-
   return (
     <View
-      style={styles.container}
-      onLayout={event => {
-        const { width, height } =
-          event.nativeEvent.layout;
-
-        if (width > 0 && height > 0) {
-          setLayout({ width, height });
-        }
-      }}
+      onLayout={layout}
+      style={s.canvas}
     >
       <View
         pointerEvents="none"
@@ -174,51 +237,41 @@ export default function Canvas({
           height="100%"
           viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
         >
-          {visibleStrokes.map(stroke =>
-            stroke.points.length === 1 ? (
-              <Circle
-                key={stroke.id}
-                cx={stroke.points[0].x}
-                cy={stroke.points[0].y}
-                r={stroke.width / 2}
-                fill={stroke.color}
-              />
-            ) : (
-              <Path
-                key={stroke.id}
-                d={createPath(stroke.points)}
-                stroke={stroke.color}
-                strokeWidth={stroke.width}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            )
+          {strokes.map(stroke => (
+            <StrokeShape
+              key={stroke.id}
+              stroke={stroke}
+            />
+          ))}
+
+          {!!draft && canDraw && (
+            <StrokeShape stroke={draft} />
           )}
         </Svg>
       </View>
 
-      <View
-        style={StyleSheet.absoluteFill}
-        onStartShouldSetResponder={() => canDraw}
-        onMoveShouldSetResponder={() => canDraw}
-        onResponderGrant={beginStroke}
-        onResponderMove={moveStroke}
-        onResponderRelease={finishStroke}
-        onResponderTerminate={cancelStroke}
-        onResponderTerminationRequest={() => false}
-      />
+      {canDraw && (
+        <View
+          style={StyleSheet.absoluteFill}
+          onStartShouldSetResponder={() => canDraw}
+          onMoveShouldSetResponder={() => canDraw}
+          onResponderGrant={begin}
+          onResponderMove={move}
+          onResponderRelease={finish}
+          onResponderTerminate={cancel}
+          onResponderTerminationRequest={() => false}
+        />
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  canvas: {
     width: '100%',
     aspectRatio: CANVAS_WIDTH / CANVAS_HEIGHT,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
 });
-

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  type ReactNode,
   useRef,
   useState,
 } from 'react';
@@ -11,6 +12,8 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  Animated,
+  Platform,
 } from 'react-native';
 
 import type {
@@ -29,6 +32,7 @@ type Props = {
   code: string;
   room: DoodleRoom;
   uid: string;
+  children?: ReactNode;
 };
 
 function errorMessage(error: unknown) {
@@ -41,6 +45,7 @@ export default function RoundPanel({
   code,
   room,
   uid,
+  children,
 }: Props) {
   const [now, setNow] = useState(Date.now());
 
@@ -69,6 +74,18 @@ export default function RoundPanel({
     useState(0);
 
   const lock = useRef(false);
+
+  const fade = useRef(
+    new Animated.Value(0.6),
+  ).current;
+
+  useEffect(() => {
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [fade]);
 
   const isArtist =
     room.artistId === uid;
@@ -270,7 +287,9 @@ export default function RoundPanel({
         );
       } else {
         setFeedback(
-          `Not quite! "${value}" was incorrect.`,
+          result.close
+            ? 'Very close! Check your spelling.'
+            : `Not quite! "${value}" was incorrect.`,
         );
       }
 
@@ -295,7 +314,7 @@ export default function RoundPanel({
   }
 
   return (
-    <View style={s.container}>
+    <Animated.View style={[s.container, { opacity: fade }]}>
 
       {!finished && (
         <View style={s.top}>
@@ -438,6 +457,8 @@ export default function RoundPanel({
             {' players guessed correctly'}
           </Text>
 
+          {children}
+
           {!isArtist && !hasGuessed && (
             <View style={s.guessRow}>
               <TextInput
@@ -575,7 +596,7 @@ export default function RoundPanel({
           {error}
         </Text>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -753,3 +774,4 @@ const s = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
