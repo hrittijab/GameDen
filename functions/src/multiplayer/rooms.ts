@@ -1,3 +1,4 @@
+import { requirePlayerProfile } from './identity';
 import {
   HttpsError,
   type CallableRequest,
@@ -42,12 +43,17 @@ export function validateRequest(
   return { uid, code };
 }
 
-export function roomContext(
+export async function roomContext(
   request: CallableRequest,
   config: BackendRoomConfig,
+  allowMissingProfile = false,
 ) {
   const { uid, code } =
     validateRequest(request);
+
+  if (!allowMissingProfile) {
+    await requirePlayerProfile(uid);
+  }
 
   return {
     db,
@@ -91,10 +97,15 @@ export function requireHost(
   uid: string,
   message = 'Only the host can perform this action.',
 ): void {
-  if (room.hostId !== uid) {
+  if (
+    !hasMember(room, uid) ||
+    room.hostId !== uid
+  ) {
     throw new HttpsError(
       'permission-denied',
       message,
     );
   }
 }
+
+

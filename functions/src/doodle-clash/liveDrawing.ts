@@ -34,7 +34,7 @@ export const previewDoodleClashStroke = onCall(
   options,
   async request => {
     const { db, uid, roomRef } =
-      roomContext(request, DOODLE_CLASH_CONFIG);
+      await roomContext(request, DOODLE_CLASH_CONFIG);
 
     const stroke = validateStroke(
       request.data?.stroke,
@@ -142,5 +142,6 @@ export const previewDoodleClashStroke = onCall(
     });
   },
 );
+
 
 

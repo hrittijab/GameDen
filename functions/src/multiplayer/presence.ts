@@ -23,7 +23,7 @@ export function createHeartbeatHandler(
         db,
         uid,
         roomRef,
-      } = roomContext(request, config);
+      } = await roomContext(request, config);
 
       return db.runTransaction(async tx => {
         const snap = await tx.get(roomRef);
@@ -40,16 +40,32 @@ export function createHeartbeatHandler(
 
         requireMember(room, uid);
 
-        tx.set(
-          roomRef
-            .collection('presence')
-            .doc(uid),
+        const presenceRef = roomRef
+          .collection('presence')
+          .doc(uid);
 
-          {
-            uid,
-            lastSeen: Date.now(),
-          },
-        );
+        const previous =
+          await tx.get(presenceRef);
+
+        const now = Date.now();
+
+        const lastSeen =
+          previous.data()?.lastSeen;
+
+        if (
+          typeof lastSeen === 'number' &&
+          now - lastSeen < 5000
+        ) {
+          return {
+            success: true,
+            throttled: true,
+          };
+        }
+
+        tx.set(presenceRef, {
+          uid,
+          lastSeen: now,
+        });
 
         return {
           success: true,
@@ -58,3 +74,5 @@ export function createHeartbeatHandler(
     },
   );
 }
+
+

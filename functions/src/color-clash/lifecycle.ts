@@ -31,7 +31,7 @@ import {
 // COLOR CLASH MATCH DEPARTURE
 // ==========================================
 
-async function handleMatchDeparture(
+export async function handleMatchDeparture(
   context: DepartureContext,
 ): Promise<{ success: boolean }> {
   const {
@@ -163,7 +163,7 @@ async function handleMatchDeparture(
   room.hostId = nextHost(
     room.hostId,
     targetUid,
-    room.playerOrder,
+    remainingIds,
   );
 
   // ========================================
@@ -172,7 +172,9 @@ async function handleMatchDeparture(
 
   if (room.status === 'playing') {
     room.lastAction =
-      `${name} quit the match.`;
+      context.reason === 'timeout'
+        ? `${name}'s connection timed out.`
+        : `${name} quit the match.`;
 
     // Only one player remains.
 
@@ -195,8 +197,8 @@ async function handleMatchDeparture(
       state.drawnCardId = null;
 
       room.lastAction =
-        `${room.players[winnerId]} wins ` +
-        'because the other players quit!';
+        `${name} left the match. ` +
+        `${room.players[winnerId]} wins by forfeit!`;
 
       room.lastEvent = {
         id: randomUUID(),
@@ -280,3 +282,7 @@ export const leaveColorClashRoom =
 
 export const kickColorClashPlayer =
   lifecycle.kick;
+
+
+
+

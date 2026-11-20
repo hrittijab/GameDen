@@ -97,3 +97,7 @@ export {
   sendWordClashReaction,
 } from './reactions';
 
+
+export {
+  maintainColorClashMatch,
+} from './color-clash/maintenance';

@@ -30,7 +30,7 @@ export const configureDoodleClashRoom = onCall(
       db,
       uid,
       roomRef,
-    } = roomContext(
+    } = await roomContext(
       request,
       DOODLE_CLASH_CONFIG,
     );
@@ -86,4 +86,5 @@ export const configureDoodleClashRoom = onCall(
     });
   },
 );
+
 

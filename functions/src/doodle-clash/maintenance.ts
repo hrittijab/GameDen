@@ -1,3 +1,4 @@
+import { processMatchDeparture } from '../multiplayer/lifecycle';
 import {
   HttpsError,
   onCall,
@@ -40,7 +41,7 @@ export const maintainDoodleClashMatch = onCall(
       uid,
       roomRef,
       secretRef,
-    } = roomContext(
+    } = await roomContext(
       request,
       DOODLE_CLASH_CONFIG,
     );
@@ -82,10 +83,15 @@ export const maintainDoodleClashMatch = onCall(
       const staleId = ids.find((id, index) => {
         if (id === uid) return false;
 
-        const lastSeen =
-          presenceSnaps[index].data()?.lastSeen ??
-          room.matchStartedAt ??
-          now;
+        const stored =
+          presenceSnaps[index].data()?.lastSeen;
+
+        const lastSeen = Math.max(
+          room.matchStartedAt ?? now,
+          typeof stored === 'number'
+            ? stored
+            : 0,
+        );
 
         return now - lastSeen >= DISCONNECT_GRACE_MS;
       });
@@ -97,7 +103,8 @@ export const maintainDoodleClashMatch = onCall(
 
         delete remainingPlayers[staleId];
 
-        return handleDeparture({
+        return processMatchDeparture({
+          reason: 'timeout',
           tx,
           roomRef,
           secretRef,
@@ -111,7 +118,7 @@ export const maintainDoodleClashMatch = onCall(
           remainingIds: Object.keys(
             remainingPlayers,
           ),
-        });
+        }, handleDeparture);
       }
 
       if (
@@ -162,4 +169,8 @@ export const maintainDoodleClashMatch = onCall(
     });
   },
 );
+
+
+
+
 

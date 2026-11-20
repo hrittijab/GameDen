@@ -74,7 +74,7 @@ export const startWordClashMatch = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     return db.runTransaction(async tx => {
       const snapshot = await tx.get(roomRef);
@@ -145,6 +145,13 @@ export const startWordClashMatch = onCall(
         [],
       );
 
+      tx.update(roomRef, {
+        departedPlayers: {},
+        departureEvent: null,
+        forfeitResult: null,
+        sharedReactions: {},
+      });
+
       return { success: true };
     });
   },
@@ -154,7 +161,7 @@ export const selectWordClashLetter = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     const letter = request.data?.letter;
 
@@ -228,7 +235,7 @@ export const submitWordClashWord = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     const input = request.data?.word;
 
@@ -375,7 +382,7 @@ export const getMyWordClashSubmission = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     return db.runTransaction(async tx => {
       const roomSnap = await tx.get(roomRef);
@@ -411,7 +418,7 @@ export const advanceWordClashPhase = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     return db.runTransaction(async tx => {
       const roomSnap = await tx.get(roomRef);
@@ -492,4 +499,6 @@ export const advanceWordClashPhase = onCall(
     });
   },
 );
+
+
 

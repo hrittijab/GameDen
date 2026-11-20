@@ -77,6 +77,33 @@ export async function handleDeparture(
     ...room.roundPoints,
   };
 
+  const previousDepartures = (
+    room as typeof room & {
+      departedPlayers?: Record<string, {
+        name: string;
+        score: number;
+        reason: 'quit' | 'timeout';
+        leftAt: number;
+      }>;
+    }
+  ).departedPlayers ?? {};
+
+  const departedPlayers = {
+    ...previousDepartures,
+    [targetUid]: {
+      name: context.name,
+      score: scores[targetUid] ?? 0,
+      reason: context.reason ?? 'quit',
+      leftAt: Date.now(),
+    },
+  };
+
+  if (room.status === 'playing') {
+    tx.update(roomRef, {
+      departedPlayers,
+    });
+  }
+
   delete scores[targetUid];
   delete roundPoints[targetUid];
 
@@ -158,5 +185,6 @@ export const leaveDoodleClashRoom =
 
 export const kickDoodleClashPlayer =
   lifecycle.kick;
+
 
 

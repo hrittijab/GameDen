@@ -61,6 +61,33 @@ export async function handleDeparture(
     ...room.scores,
   };
 
+  const previousDepartures = (
+    room as typeof room & {
+      departedPlayers?: Record<string, {
+        name: string;
+        score: number;
+        reason: 'quit' | 'timeout';
+        leftAt: number;
+      }>;
+    }
+  ).departedPlayers ?? {};
+
+  const departedPlayers = {
+    ...previousDepartures,
+    [targetUid]: {
+      name: context.name,
+      score: scores[targetUid] ?? 0,
+      reason: context.reason ?? 'quit',
+      leftAt: Date.now(),
+    },
+  };
+
+  if (room.status === 'playing') {
+    tx.update(roomRef, {
+      departedPlayers,
+    });
+  }
+
   delete scores[targetUid];
 
   const streaks = {
@@ -116,12 +143,13 @@ export async function handleDeparture(
 
   tx.delete(presenceRef);
 
-  if (remainingIds.length < 2) {
+  if (remainingIds.length === 1 &&
+      room.status === 'playing') {
     finishWordMatch(
       tx,
       roomRef,
       secretRef,
-      [],
+      remainingIds,
     );
 
     return { success: true };
@@ -185,4 +213,6 @@ export const leaveWordClashRoom =
 
 export const kickWordClashPlayer =
   lifecycle.kick;
+
+
 

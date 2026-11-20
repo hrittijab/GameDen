@@ -1,3 +1,4 @@
+import { processMatchDeparture } from '../multiplayer/lifecycle';
 import {
   HttpsError,
   onCall,
@@ -26,7 +27,7 @@ export const maintainWordClashMatch = onCall(
       uid,
       roomRef,
       secretRef,
-    } = roomContext(
+    } = await roomContext(
       request,
       WORD_CLASH_CONFIG,
     );
@@ -92,7 +93,8 @@ export const maintainWordClashMatch = onCall(
 
       delete remainingPlayers[staleId];
 
-      return handleDeparture({
+      return processMatchDeparture({
+          reason: 'timeout',
         tx,
         roomRef,
         secretRef,
@@ -106,7 +108,10 @@ export const maintainWordClashMatch = onCall(
         remainingIds: Object.keys(
           remainingPlayers,
         ),
-      });
+      }, handleDeparture);
     });
   },
 );
+
+
+

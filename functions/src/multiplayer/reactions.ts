@@ -45,7 +45,7 @@ export function createReactionHandler(
       db,
       uid,
       roomRef,
-    } = roomContext(request, config);
+    } = await roomContext(request, config);
 
     const emoji = request.data?.emoji;
 
@@ -129,3 +129,4 @@ export function createReactionHandler(
     });
   });
 }
+

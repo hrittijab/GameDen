@@ -4,6 +4,142 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function hasPlayerProfile() {
+      return request.auth != null
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        );
+    }
+
+    function canReadRoom() {
+      return request.auth != null
+
+        && (
+          // Existing members can recover their
+          // room without another profile lookup.
+          (
+            resource != null
+
+            && request.auth.uid
+              in resource.data.players.keys()
+          )
+
+          ||
+
+          // Onboarded players may check unused
+          // codes and discover waiting rooms.
+          (
+            (
+              resource == null ||
+              resource.data.status == 'lobby'
+            )
+
+            && hasPlayerProfile()
+          )
+        );
+    }
+
+    function validRoomIdentity() {
+      let profile = get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data;
+
+      let data = request.resource.data;
+
+      return hasPlayerProfile()
+
+        && data.players[request.auth.uid]
+          == profile.nickname
+
+        && data.playerAvatars is map
+
+        && data.playerAvatars[request.auth.uid]
+          == profile.avatar;
+    }
+
+    function validCreatedAvatars() {
+      return validRoomIdentity()
+
+        && request.resource.data.playerAvatars
+          .keys().hasOnly([request.auth.uid]);
+    }
+
+    function validJoinedAvatars() {
+      return validRoomIdentity()
+
+        && request.resource.data.playerAvatars
+          .diff(
+            resource.data.get('playerAvatars', {})
+          )
+          .affectedKeys()
+          .hasOnly([request.auth.uid]);
+    }
+
+
+    // ======================================
+    // PLAYER PROFILES
+    // ======================================
+
+    match /users/{uid} {
+
+      function isOwner() {
+        return request.auth != null
+          && request.auth.uid == uid;
+      }
+
+      function validProfile() {
+        let data = request.resource.data;
+
+        return data.keys().hasAll([
+            'nickname',
+            'avatar',
+            'createdAt',
+            'updatedAt'
+          ])
+
+          && data.keys().hasOnly([
+            'nickname',
+            'avatar',
+            'createdAt',
+            'updatedAt'
+          ])
+
+          && data.nickname is string
+          && data.nickname.size() >= 1
+          && data.nickname.size() <= 24
+
+          && data.nickname.matches(
+            '^\\S(.*\\S)?$'
+          )
+
+          && data.avatar in [
+            '🐼', '🦊', '🐱', '🐸',
+            '🐯', '🐨', '🐶', '🐰',
+            '🦁', '🐵', '🐧', '🦉'
+          ]
+
+          && data.createdAt is timestamp
+          && data.updatedAt == request.time;
+      }
+
+      allow get: if isOwner();
+
+      allow list: if false;
+
+      allow create: if isOwner()
+        && validProfile()
+        && request.resource.data.createdAt
+          == request.time;
+
+      allow update: if isOwner()
+        && validProfile()
+        && request.resource.data.createdAt
+          == resource.data.createdAt;
+
+      allow delete: if false;
+    }
+
+
     match /colorClashRooms/{roomCode} {
 
       function signedIn() {
@@ -16,11 +152,12 @@ service cloud.firestore {
           && name.size() <= 24;
       }
 
-      allow get: if signedIn();
+      allow get: if canReadRoom();
 
       allow list: if false;
 
       allow create: if signedIn()
+        && validCreatedAvatars()
 
         && roomCode.matches(
           '^[A-HJ-NP-Z2-9]{8}$'
@@ -30,7 +167,8 @@ service cloud.firestore {
           .hasOnly([
             'hostId',
             'status',
-            'players'
+            'players',
+            'playerAvatars'
           ])
 
         && request.resource.data.hostId
@@ -54,13 +192,14 @@ service cloud.firestore {
         );
 
       allow update: if signedIn()
+        && validJoinedAvatars()
 
         && resource.data.status == 'lobby'
 
         && request.resource.data
           .diff(resource.data)
           .affectedKeys()
-          .hasOnly(['players'])
+          .hasOnly(['players', 'playerAvatars'])
 
         && request.resource.data.players
           .size() <= 20
@@ -165,16 +304,17 @@ service cloud.firestore {
           ).data.players.keys();
       }
 
-      allow get: if signedIn();
+      allow get: if canReadRoom();
 
       allow list: if false;
 
       allow create: if signedIn()
+        && validCreatedAvatars()
 
         && roomCode.matches('^[A-HJ-NP-Z2-9]{8}$')
 
         && request.resource.data.keys()
-          .hasOnly(['hostId', 'status', 'players'])
+          .hasOnly(['hostId', 'status', 'players', 'playerAvatars'])
 
         && request.resource.data.hostId
           == request.auth.uid
@@ -191,11 +331,12 @@ service cloud.firestore {
         );
 
       allow update: if signedIn()
+        && validJoinedAvatars()
 
         && resource.data.status == 'lobby'
 
         && request.resource.data.diff(resource.data)
-          .affectedKeys().hasOnly(['players'])
+          .affectedKeys().hasOnly(['players', 'playerAvatars'])
 
         && request.resource.data.players.size() <= 12
 
@@ -275,15 +416,16 @@ service cloud.firestore {
           ).data.players.keys();
       }
 
-      allow get: if signedIn();
+      allow get: if canReadRoom();
       allow list: if false;
 
       allow create: if signedIn()
+        && validCreatedAvatars()
 
         && roomCode.matches('^[A-HJ-NP-Z2-9]{8}$')
 
         && request.resource.data.keys()
-          .hasOnly(['hostId', 'status', 'players'])
+          .hasOnly(['hostId', 'status', 'players', 'playerAvatars'])
 
         && request.resource.data.hostId
           == request.auth.uid
@@ -300,11 +442,12 @@ service cloud.firestore {
         );
 
       allow update: if signedIn()
+        && validJoinedAvatars()
 
         && resource.data.status == 'lobby'
 
         && request.resource.data.diff(resource.data)
-          .affectedKeys().hasOnly(['players'])
+          .affectedKeys().hasOnly(['players', 'playerAvatars'])
 
         && request.resource.data.players.size() <= 12
 
@@ -351,6 +494,10 @@ service cloud.firestore {
 
   }
 }
+
+
+
+
 
 
 

@@ -54,6 +54,7 @@ export type GameEvent = {
 };
 
 export type Room = {
+  playerAvatars?: Record<string, string>;
   hostId: string;
   status: 'lobby' | 'playing' | 'finished';
 
@@ -79,6 +80,7 @@ export type Room = {
   revision: number;
   engineVersion: number;
   matchNumber: number;
+  matchStartedAt?: number;
 
   winnerId: string | null;
 
@@ -307,6 +309,7 @@ export function start(
     revision,
     engineVersion: ENGINE_VERSION,
     matchNumber,
+    matchStartedAt: now,
 
     winnerId: null,
 
@@ -930,3 +933,5 @@ export function apply(
 
   sync(room, hands);
 }
+
+

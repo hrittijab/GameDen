@@ -60,7 +60,13 @@ function validateMember(
     );
   }
 
-  if (!room.playerOrder.includes(uid)) {
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      room.players,
+      uid,
+    ) ||
+    !room.playerOrder.includes(uid)
+  ) {
     throw new HttpsError(
       'permission-denied',
       'You are not in this match.',
@@ -80,7 +86,7 @@ async function initializeMatch(
     uid,
     roomRef,
     secretRef,
-  } = context(request);
+  } = await context(request);
 
   try {
     return await db.runTransaction(async tx => {
@@ -148,6 +154,20 @@ async function initializeMatch(
         Date.now(),
       );
 
+      // Preserve the selected player avatars
+      // when replacing the lobby document.
+
+      room.playerAvatars = {};
+
+      for (const playerId of room.playerOrder) {
+        const avatar =
+          old.playerAvatars?.[playerId];
+
+        if (typeof avatar === 'string') {
+          room.playerAvatars[playerId] = avatar;
+        }
+      }
+
       tx.set(roomRef, room);
       tx.set(secretRef, state);
 
@@ -197,7 +217,7 @@ async function move(
     uid,
     roomRef,
     secretRef,
-  } = context(request);
+  } = await context(request);
 
   try {
     return await db.runTransaction(async tx => {
@@ -334,7 +354,9 @@ export const playColorClashCard = onCall(
 
   request => {
     if (
-      typeof request.data?.cardId !== 'string'
+      typeof request.data?.cardId !== 'string' ||
+      request.data.cardId.length === 0 ||
+      request.data.cardId.length > 100
     ) {
       throw new HttpsError(
         'invalid-argument',
@@ -400,11 +422,15 @@ export const callColorClashUno = onCall(
     const {
       uid,
       roomRef,
-    } = context(request);
+    } = await context(request);
 
     const windowId = request.data?.windowId;
 
-    if (typeof windowId !== 'string') {
+    if (
+      typeof windowId !== 'string' ||
+      !windowId ||
+      windowId.length > 100
+    ) {
       throw new HttpsError(
         'invalid-argument',
         'Invalid UNO window.',
@@ -462,14 +488,19 @@ export const resolveColorClashUno = onCall(
       uid,
       roomRef,
       secretRef,
-    } = context(request);
+    } = await context(request);
 
     const targetUid = request.data?.targetUid;
     const windowId = request.data?.windowId;
 
     if (
       typeof targetUid !== 'string' ||
-      typeof windowId !== 'string'
+      !targetUid ||
+      targetUid.length > 128 ||
+      targetUid.includes('/') ||
+      typeof windowId !== 'string' ||
+      !windowId ||
+      windowId.length > 100
     ) {
       throw new HttpsError(
         'invalid-argument',
@@ -568,3 +599,7 @@ export const resolveColorClashUno = onCall(
     }
   },
 );
+
+
+
+

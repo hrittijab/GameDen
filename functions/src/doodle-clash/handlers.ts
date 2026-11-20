@@ -81,7 +81,7 @@ export const startDoodleClashMatch = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     return db.runTransaction(async tx => {
       const snap = await tx.get(roomRef);
@@ -163,6 +163,10 @@ export const startDoodleClashMatch = onCall(
 
       tx.update(roomRef, {
         matchStartedAt: Date.now(),
+        departedPlayers: {},
+        departureEvent: null,
+        forfeitResult: null,
+        sharedReactions: {},
       });
 
       return { success: true };
@@ -174,7 +178,7 @@ export const getDoodleClashWord = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     return db.runTransaction(async tx => {
       const roomSnap = await tx.get(roomRef);
@@ -227,7 +231,7 @@ export const selectDoodleClashWord = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     return db.runTransaction(async tx => {
       const roomSnap = await tx.get(roomRef);
@@ -294,7 +298,7 @@ export const guessDoodleClashWord = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     const guess = request.data?.guess;
 
@@ -520,7 +524,7 @@ export const advanceDoodleClashRound = onCall(
   options,
   async request => {
     const { db, uid, roomRef, secretRef } =
-      context(request);
+      await context(request);
 
     return db.runTransaction(async tx => {
       const roomSnap = await tx.get(roomRef);
@@ -596,7 +600,7 @@ export const updateDoodleClashDrawing = onCall(
   options,
   async request => {
     const { db, uid, roomRef } =
-      context(request);
+      await context(request);
 
     const drawingRef = roomRef
       .collection('drawing')
@@ -703,6 +707,8 @@ export const updateDoodleClashDrawing = onCall(
     });
   },
 );
+
+
 
 
 

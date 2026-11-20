@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type {
   DocumentReference,
   Transaction,
@@ -20,6 +21,7 @@ import {
 } from './rooms';
 
 export type DepartureContext = {
+  reason?: 'quit' | 'timeout';
   tx: Transaction;
   roomRef: DocumentReference;
   secretRef: DocumentReference;
@@ -45,6 +47,62 @@ export function nextHost(
     : hostId;
 }
 
+export async function processMatchDeparture(
+  context: DepartureContext,
+  handler: DepartureHandler,
+): Promise<{ success: boolean }> {
+  const {
+    tx,
+    roomRef,
+    room,
+    targetUid,
+    name,
+    remainingIds,
+  } = context;
+
+  const wasPlaying = room.status === 'playing';
+
+  // Capture this before the game handler
+  // modifies the room.
+  const previousHostId = room.hostId;
+
+  const result = await handler(context);
+
+  if (
+    wasPlaying &&
+    result.success &&
+    remainingIds.length > 0
+  ) {
+    const event = {
+      id: randomUUID(),
+      playerId: targetUid,
+      playerName: name,
+      reason: context.reason ?? 'quit',
+      timestamp: Date.now(),
+      remainingCount: remainingIds.length,
+      newHostId:
+        previousHostId === targetUid
+          ? remainingIds[0]
+          : null,
+    };
+
+    tx.update(roomRef, {
+      departureEvent: event,
+
+      ...(remainingIds.length === 1
+        ? {
+            forfeitResult: {
+              ...event,
+              winnerId: remainingIds[0],
+            },
+          }
+        : {}),
+    });
+  }
+
+  return result;
+}
+
 export function createLifecycleHandlers(
   config: BackendRoomConfig,
   handleMatchDeparture: DepartureHandler,
@@ -58,7 +116,7 @@ export function createLifecycleHandlers(
       uid,
       roomRef,
       secretRef,
-    } = roomContext(request, config);
+    } = await roomContext(request, config, !kick);
 
     const targetUid = kick
       ? request.data?.targetUid
@@ -140,8 +198,15 @@ export function createLifecycleHandlers(
         if (!remainingIds.length) {
           tx.delete(roomRef);
         } else {
+          const playerAvatars = {
+            ...(snap.data()?.playerAvatars ?? {}),
+          };
+
+          delete playerAvatars[targetUid];
+
           tx.update(roomRef, {
             players: remainingPlayers,
+            playerAvatars,
 
             hostId: nextHost(
               room.hostId,
@@ -159,17 +224,21 @@ export function createLifecycleHandlers(
       // Delegate active or finished matches
       // to the game's own departure logic.
 
-      return handleMatchDeparture({
-        tx,
-        roomRef,
-        secretRef,
-        presenceRef,
-        room,
-        targetUid,
-        name,
-        remainingPlayers,
-        remainingIds,
-      });
+      return processMatchDeparture(
+        {
+          tx,
+          roomRef,
+          secretRef,
+          presenceRef,
+          room,
+          targetUid,
+          name,
+          remainingPlayers,
+          remainingIds,
+          reason: 'quit',
+        },
+        handleMatchDeparture,
+      );
     });
   }
 
@@ -185,3 +254,9 @@ export function createLifecycleHandlers(
 
   return { leave, kick };
 }
+
+
+
+
+
+

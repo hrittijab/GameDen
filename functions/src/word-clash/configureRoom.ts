@@ -27,7 +27,7 @@ export const configureWordClashRoom = onCall(
       db,
       uid,
       roomRef,
-    } = roomContext(
+    } = await roomContext(
       request,
       WORD_CLASH_CONFIG,
     );
@@ -82,3 +82,4 @@ export const configureWordClashRoom = onCall(
     });
   },
 );
+
