@@ -3,10 +3,24 @@ export type RoomStatus =
   | 'playing'
   | 'finished';
 
+export type RoomVisibility =
+  | 'private'
+  | 'public';
+
+export type RoomCreationOptions = {
+  visibility: RoomVisibility;
+  roomName: string;
+  maxPlayers: number;
+};
+
 export type MultiplayerRoom = {
+  visibility?: RoomVisibility;
+  roomName?: string;
+  maxPlayers?: number;
   hostId: string;
   status: RoomStatus;
   players: Record<string, string>;
+  playerAvatars?: Record<string, string>;
 };
 
 export type RoomConfig = {
@@ -44,3 +58,23 @@ export type MultiplayerSession = {
 export type MultiplayerCallResult = {
   success: boolean;
 };
+
+
+export function getRoomCapacity(
+  room: MultiplayerRoom | null | undefined,
+  config: RoomConfig,
+): number {
+  const capacity = room?.maxPlayers;
+
+  if (
+    typeof capacity === 'number' &&
+    Number.isInteger(capacity) &&
+    capacity >= 2 &&
+    capacity <= config.maxPlayers
+  ) {
+    return capacity;
+  }
+
+  return config.maxPlayers;
+}
+

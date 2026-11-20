@@ -114,10 +114,28 @@ export function startHeartbeat(
       },
     );
 
+  const reconnect = () => {
+    void send();
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener?.(
+      'online',
+      reconnect,
+    );
+  }
+
   return () => {
     stopped = true;
     clearInterval(interval);
     subscription.remove();
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener?.(
+        'online',
+        reconnect,
+      );
+    }
   };
 }
 
@@ -234,3 +252,4 @@ export function useMultiplayerPresence(
     error,
   };
 }
+

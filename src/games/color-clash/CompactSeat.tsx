@@ -11,13 +11,6 @@ import type {
   Reaction,
 } from '../../multiplayer/reactions';
 
-const AVATARS = [
-  '🐼', '🦊', '🐱', '🐸',
-  '🐯', '🐨', '🐶', '🐰',
-  '🦁', '🐵', '🐧', '🦉',
-  '🐻', '🐙', '🦄', '🐹',
-  '🐢', '🦝', '🐥', '🐺',
-];
 
 const COLORS = [
   '#B2E4DF',
@@ -36,6 +29,7 @@ const STATUS_COLORS = {
 
 export type CompactSeatProps = {
   name: string;
+  avatar?: string;
   count: number;
   index: number;
   active: boolean;
@@ -49,6 +43,7 @@ export type CompactSeatProps = {
 
 export default function CompactSeat({
   name,
+  avatar,
   count,
   index,
   active,
@@ -86,7 +81,7 @@ export default function CompactSeat({
           active && !departed && s.activeAvatar,
         ]}>
           <Text style={s.emoji}>
-            {AVATARS[i % AVATARS.length]}
+            {avatar ?? '👤'}
           </Text>
 
           {!departed && (
@@ -253,3 +248,5 @@ const s = StyleSheet.create({
     color: '#FFD071',
   },
 });
+
+

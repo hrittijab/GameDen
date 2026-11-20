@@ -353,3 +353,16 @@ export const rematchColorClashGame = (
     code: validateCode(code),
     revision,
   });
+
+// ==========================================
+// INACTIVITY MAINTENANCE
+// ==========================================
+
+export const maintainColorClashGame = (
+  code: string,
+  matchNumber: number,
+) =>
+  call('maintainColorClashMatch', {
+    code: validateCode(code),
+    matchNumber,
+  });

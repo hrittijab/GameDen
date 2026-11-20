@@ -1,3 +1,5 @@
+import PlayerCard from '../player/PlayerCard';
+import ResumeMatches from '../multiplayer/ResumeMatches';
 import {
   useRouter,
   type Href,
@@ -79,6 +81,8 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
+        <PlayerCard />
+
         {/* WELCOME */}
 
         <View style={s.intro}>
@@ -95,6 +99,49 @@ export default function HomeScreen() {
             or enjoy a game on your own.
           </Text>
         </View>
+
+        <ResumeMatches />
+
+        {/* MULTIPLAYER HUB */}
+
+        <Pressable
+          accessibilityRole="button"
+
+          accessibilityLabel="Open Multiplayer Hub"
+
+          onPress={() =>
+            router.push('/multiplayer-hub' as Href)
+          }
+
+          style={({ pressed }) => [
+            s.multiplayerHub,
+
+            pressed && {
+              opacity: 0.8,
+            },
+          ]}
+        >
+          <View style={s.hubIconBox}>
+            <Text style={s.hubIcon}>
+              👥
+            </Text>
+          </View>
+
+          <View style={{ flex: 1, gap: 6 }}>
+            <Text style={s.hubTitle}>
+              Multiplayer Hub
+            </Text>
+
+            <Text style={s.hubDescription}>
+              Join public rooms, meet new players
+              and compete with friends.
+            </Text>
+
+            <Text style={s.hubAction}>
+              Find a room →
+            </Text>
+          </View>
+        </Pressable>
 
         {/* CATEGORY HEADER */}
 
@@ -182,6 +229,50 @@ export default function HomeScreen() {
 }
 
 const s = StyleSheet.create({
+
+  multiplayerHub: {
+    backgroundColor: '#203B49',
+    borderColor: '#A5E1EB66',
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+    marginBottom: 28,
+  },
+
+  hubIconBox: {
+    width: 65,
+    height: 65,
+    borderRadius: 18,
+    backgroundColor: '#A5E1EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  hubIcon: {
+    fontSize: 33,
+  },
+
+  hubTitle: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    fontWeight: '900',
+  },
+
+  hubDescription: {
+    color: '#C5DCE3',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  hubAction: {
+    color: '#A5E1EB',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
   root: {
     flex: 1,
     backgroundColor: '#121629',
@@ -359,4 +450,7 @@ const s = StyleSheet.create({
     marginTop: 30,
   },
 });
+
+
+
 

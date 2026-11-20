@@ -63,9 +63,22 @@ export default function SoundFeedback({
 
       const highest = Math.max(0, ...scores);
 
-      const won =
-        scores.length >= 2 &&
-        (room.scores?.[uid] ?? 0) === highest;
+      const forfeit = (
+        room as typeof room & {
+          forfeitResult?: {
+            winnerId: string;
+          } | null;
+        }
+      ).forfeitResult;
+
+      const won = forfeit
+        ? forfeit.winnerId === uid
+        : scores.length >= 2 &&
+          Object.prototype.hasOwnProperty.call(
+            room.players,
+            uid,
+          ) &&
+          (room.scores?.[uid] ?? 0) === highest;
 
       if (won) {
         feedback('win', 'success');
@@ -104,3 +117,4 @@ export default function SoundFeedback({
 
   return null;
 }
+

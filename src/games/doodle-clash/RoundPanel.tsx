@@ -1,3 +1,4 @@
+import { getPlayerAvatar } from '../../player/avatars';
 import {
   useEffect,
   type ReactNode,
@@ -29,6 +30,12 @@ import {
 } from './roundService';
 
 import ActivityPanel from './ActivityPanel';
+
+import CountdownRing from '../../multiplayer/timers/CountdownRing';
+
+import {
+  useCountdown,
+} from '../../multiplayer/timers/useCountdown';
 import { MODES } from './settings';
 
 type Props = {
@@ -50,7 +57,13 @@ export default function RoundPanel({
   uid,
   children,
 }: Props) {
-  const [now, setNow] = useState(Date.now());
+  const countdown = useCountdown(
+    room.deadline,
+    room.phase === 'drawing'
+      ? room.drawingMs
+      : undefined,
+    room.status !== 'finished',
+  );
 
   const [choices, setChoices] =
     useState<WordOption[]>([]);
@@ -96,17 +109,25 @@ export default function RoundPanel({
   const hasGuessed =
     room.guessedIds?.includes(uid) ?? false;
 
-  const seconds = Math.max(
-    0,
-    Math.ceil(
-      ((room.deadline ?? 0) - now) / 1000,
-    ),
-  );
+  const seconds = countdown.seconds;
 
   const finished =
     room.status === 'finished';
 
   const names = Object.keys(room.players);
+
+  const forfeit = (
+    room as typeof room & {
+      forfeitResult?: {
+        winnerId: string;
+        playerName: string;
+        reason: 'quit' | 'timeout';
+      } | null;
+    }
+  ).forfeitResult;
+
+  const wonByForfeit =
+    finished && forfeit?.winnerId === uid;
 
   const currentMode = MODES.find(
     item => item.value ===
@@ -132,22 +153,13 @@ export default function RoundPanel({
     .filter(id => room.guessedIds?.includes(id))
     .length;
 
-  useEffect(() => {
-    if (finished) return;
 
-    const timer = setInterval(
-      () => setNow(Date.now()),
-      250,
-    );
-
-    return () => clearInterval(timer);
-  }, [finished]);
 
   useEffect(() => {
     if (
       finished ||
       !room.phase ||
-      seconds > 0
+      !countdown.expired
     ) {
       return;
     }
@@ -186,7 +198,8 @@ export default function RoundPanel({
     code,
     room.matchNumber,
     room.phase,
-    seconds,
+    room.deadline,
+    countdown.expired,
     finished,
   ]);
 
@@ -343,14 +356,18 @@ export default function RoundPanel({
             </Text>
           </View>
 
-          <View style={s.timerBox}>
-            <Text style={[
-              s.timer,
-              seconds <= 10 && s.timerUrgent,
-            ]}>
-              {seconds}s
-            </Text>
-          </View>
+          <CountdownRing
+            seconds={seconds}
+            progress={
+              room.phase === 'drawing' &&
+              room.drawingMs
+                ? countdown.progress
+                : undefined
+            }
+            size={82}
+            accent="#A5E1EB"
+            warningSeconds={10}
+          />
         </View>
       )}
 
@@ -565,11 +582,15 @@ export default function RoundPanel({
           </Text>
 
           <Text style={s.title}>
-            {names.length >= 2
-              ? winners.length > 1
-                ? 'It is a tie!'
-                : `${room.players[winners[0]]} wins!`
-              : 'Match ended'}
+            {wonByForfeit
+              ? '🏆 YOU WIN!'
+              : forfeit
+                ? `${room.players[forfeit.winnerId] ?? 'Opponent'} wins!`
+                : names.length >= 2
+                  ? winners.length > 1
+                    ? 'It is a tie!'
+                    : `${room.players[winners[0]]} wins!`
+                  : 'Match ended'}
           </Text>
 
           <Text style={s.secret}>
@@ -601,7 +622,7 @@ export default function RoundPanel({
               style={s.playerName}
               numberOfLines={1}
             >
-              {room.players[id]}
+              {getPlayerAvatar(room, id)}{' '}{room.players[id]}
               {id === uid ? ' (You)' : ''}
             </Text>
 
@@ -802,5 +823,9 @@ const s = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
+
+
+
 
 

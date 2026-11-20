@@ -1,45 +1,30 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { auth } from '../config/firebase';
+
 import type {
   MultiplayerSession,
 } from './types';
 
 export type { MultiplayerSession } from './types';
 
-function sessionKey(gameId: string): string {
+function legacyKey(gameId: string): string {
   return `@gameden/${gameId}/session`;
 }
 
-export async function saveSession(
+function sessionKey(
   gameId: string,
-  code: string,
   uid: string,
-  playerName: string,
-): Promise<void> {
-  const session: MultiplayerSession = {
-    code: code.trim().toUpperCase(),
-    uid,
-    playerName,
-    savedAt: Date.now(),
-  };
-
-  await AsyncStorage.setItem(
-    sessionKey(gameId),
-    JSON.stringify(session),
-  );
+): string {
+  return `@gameden/players/${uid}/${gameId}/session`;
 }
 
-export async function getSession(
-  gameId: string,
-): Promise<MultiplayerSession | null> {
+function parseSession(
+  stored: string | null,
+): MultiplayerSession | null {
+  if (!stored) return null;
+
   try {
-    const stored =
-      await AsyncStorage.getItem(
-        sessionKey(gameId),
-      );
-
-    if (!stored) return null;
-
     const session = JSON.parse(stored);
 
     if (
@@ -50,7 +35,6 @@ export async function getSession(
       typeof session.playerName !== 'string' ||
       typeof session.savedAt !== 'number'
     ) {
-      await clearSession(gameId);
       return null;
     }
 
@@ -60,10 +44,96 @@ export async function getSession(
   }
 }
 
+export async function saveSession(
+  gameId: string,
+  code: string,
+  uid: string,
+  playerName: string,
+): Promise<void> {
+  if (auth.currentUser?.uid !== uid) {
+    throw new Error(
+      'Player identity has changed.',
+    );
+  }
+
+  const session: MultiplayerSession = {
+    code: code.trim().toUpperCase(),
+    uid,
+    playerName,
+    savedAt: Date.now(),
+  };
+
+  await AsyncStorage.setItem(
+    sessionKey(gameId, uid),
+    JSON.stringify(session),
+  );
+}
+
+export async function getSession(
+  gameId: string,
+  uid = auth.currentUser?.uid,
+  strict = false,
+): Promise<MultiplayerSession | null> {
+  if (!uid) return null;
+
+  try {
+    const key = sessionKey(gameId, uid);
+
+    const stored =
+      await AsyncStorage.getItem(key);
+
+    const current =
+      parseSession(stored);
+
+    if (current?.uid === uid) {
+      return current;
+    }
+
+    // Migrate old storage only when it
+    // belongs to this authenticated player.
+
+    const oldKey = legacyKey(gameId);
+
+    const previous = parseSession(
+      await AsyncStorage.getItem(oldKey),
+    );
+
+    if (previous?.uid !== uid) {
+      return null;
+    }
+
+    await AsyncStorage.setItem(
+      key,
+      JSON.stringify(previous),
+    );
+
+    await AsyncStorage.removeItem(oldKey);
+
+    return previous;
+  } catch (error) {
+    if (strict) throw error;
+
+    return null;
+  }
+}
+
 export async function clearSession(
   gameId: string,
+  uid = auth.currentUser?.uid,
 ): Promise<void> {
-  await AsyncStorage.removeItem(
-    sessionKey(gameId),
+  if (!uid) return;
+
+  const key = sessionKey(gameId, uid);
+
+  await AsyncStorage.removeItem(key);
+
+  const oldKey = legacyKey(gameId);
+
+  const previous = parseSession(
+    await AsyncStorage.getItem(oldKey),
   );
+
+  if (previous?.uid === uid) {
+    await AsyncStorage.removeItem(oldKey);
+  }
 }

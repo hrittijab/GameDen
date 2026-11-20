@@ -1,9 +1,22 @@
+import * as FirebaseAuth from 'firebase/auth';
 
-import { getApp, getApps, initializeApp } from 'firebase/app';
+import { Platform } from 'react-native';
+
+import AsyncStorage from
+  '@react-native-async-storage/async-storage';
+
+import {
+  getApp,
+  getApps,
+  initializeApp,
+} from 'firebase/app';
 
 import {
   connectAuthEmulator,
   getAuth,
+  initializeAuth,
+  type Auth,
+  type Persistence,
 } from 'firebase/auth';
 
 import {
@@ -30,38 +43,161 @@ const app = getApps().length
   ? getApp()
   : initializeApp(firebaseConfig);
 
+// ==========================================
+// ENVIRONMENT CONFIGURATION
+// ==========================================
+
+const isWeb = Platform.OS === 'web';
+
+const localhostWeb =
+  isWeb &&
+  typeof window !== 'undefined' &&
+  ['localhost', '127.0.0.1'].includes(
+    window.location.hostname,
+  );
+
+const configuredHost =
+  process.env.EXPO_PUBLIC_EMULATOR_HOST?.trim();
+
 const useEmulators =
   __DEV__ &&
-  typeof window !== 'undefined' &&
-  window.location.hostname === 'localhost';
+  (
+    localhostWeb ||
+    process.env.EXPO_PUBLIC_USE_EMULATORS === 'true'
+  );
 
-// Initialize Authentication first.
-export const auth = getAuth(app);
+const emulatorHost =
+  configuredHost ||
+  (Platform.OS === 'android'
+    ? '10.0.2.2'
+    : '127.0.0.1');
 
-// Connect immediately after obtaining Auth.
-// Avoid reconfiguring the same Auth instance on Fast Refresh.
-if (useEmulators && !auth.emulatorConfig) {
-  connectAuthEmulator(
-    auth,
-    'http://127.0.0.1:9099',
-    { disableWarnings: true }
+// Do not silently connect native development
+// builds to production Firebase.
+
+if (
+  __DEV__ &&
+  !isWeb &&
+  !useEmulators
+) {
+  throw new Error(
+    'Configure EXPO_PUBLIC_USE_EMULATORS before native development.',
   );
 }
 
-// Initialize Firestore.
+// ==========================================
+// AUTHENTICATION
+// ==========================================
+
+function getNativePersistence(): Persistence {
+  const nativeAuth = FirebaseAuth as typeof FirebaseAuth & {
+    getReactNativePersistence?: (
+      storage: typeof AsyncStorage,
+    ) => Persistence;
+  };
+
+  if (
+    typeof nativeAuth.getReactNativePersistence
+    !== 'function'
+  ) {
+    throw new Error(
+      'Firebase native authentication persistence is unavailable.',
+    );
+  }
+
+  return nativeAuth.getReactNativePersistence(
+    AsyncStorage,
+  );
+}
+
+function createAuth(): Auth {
+  if (isWeb) {
+    return getAuth(app);
+  }
+
+  try {
+    return initializeAuth(app, {
+      persistence:
+        getNativePersistence(),
+    });
+  } catch (error) {
+    const code =
+      (error as { code?: string })?.code;
+
+    // Fast Refresh may reuse an existing
+    // Firebase Authentication instance.
+
+    if (code === 'auth/already-initialized') {
+      return getAuth(app);
+    }
+
+    throw error;
+  }
+}
+
+export const auth = createAuth();
+
+if (useEmulators && !auth.emulatorConfig) {
+  connectAuthEmulator(
+    auth,
+    `http://${emulatorHost}:9099`,
+    {
+      disableWarnings: true,
+    },
+  );
+}
+
+// ==========================================
+// FIRESTORE
+// ==========================================
+
 export const db = getFirestore(app);
 
 if (useEmulators) {
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectFirestoreEmulator(
+    db,
+    emulatorHost,
+    8080,
+  );
 }
 
-// Initialize Cloud Functions.
-export const functions = getFunctions(app, 'us-central1');
+// ==========================================
+// CLOUD FUNCTIONS
+// ==========================================
+
+export const functions =
+  getFunctions(app, 'us-central1');
 
 if (useEmulators) {
   connectFunctionsEmulator(
     functions,
-    '127.0.0.1',
-    5001
+    emulatorHost,
+    5001,
   );
 }
+
+// ==========================================
+// DEVELOPMENT DIAGNOSTICS
+// ==========================================
+
+if (__DEV__) {
+  console.log(
+    '[GameDen] Platform:',
+    Platform.OS,
+  );
+
+  console.log(
+    '[GameDen] Firebase environment:',
+    useEmulators
+      ? 'EMULATOR'
+      : 'PRODUCTION',
+  );
+
+  if (useEmulators) {
+    console.log(
+      '[GameDen] Emulator host:',
+      emulatorHost,
+    );
+  }
+}
+

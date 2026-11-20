@@ -1,3 +1,5 @@
+import { getRoomCapacity } from './types';
+import type { RoomCreationOptions } from './types';
 import {
   doc,
   onSnapshot,
@@ -5,6 +7,45 @@ import {
 } from 'firebase/firestore';
 
 import { db } from '../config/firebase';
+
+import {
+  isValidAvatar,
+} from '../player/avatars';
+
+import type {
+  Transaction,
+} from 'firebase/firestore';
+
+async function readPlayerIdentity(
+  tx: Transaction,
+  uid: string,
+) {
+  const snapshot = await tx.get(
+    doc(db, 'users', uid),
+  );
+
+  if (!snapshot.exists()) {
+    throw new Error(
+      'Complete your GameDen profile first.',
+    );
+  }
+
+  const profile = snapshot.data();
+
+  if (
+    typeof profile.nickname !== 'string' ||
+    !isValidAvatar(profile.avatar)
+  ) {
+    throw new Error(
+      'Your player profile is incomplete.',
+    );
+  }
+
+  return {
+    name: validateName(profile.nickname),
+    avatar: profile.avatar,
+  };
+}
 
 import { ensureGuest } from './auth';
 
@@ -65,9 +106,43 @@ export function getRoomRef(
 
 export async function createRoom(
   config: RoomConfig,
-  playerName: string,
+  _playerName: string,
+  options?: RoomCreationOptions,
 ): Promise<string> {
-  const name = validateName(playerName);
+
+  const visibility =
+    options?.visibility ?? 'private';
+
+  const capacity =
+    options?.maxPlayers ?? config.maxPlayers;
+
+  const roomName =
+    (options?.roomName ?? '').trim();
+
+  if (
+    visibility !== 'private' &&
+    visibility !== 'public'
+  ) {
+    throw new Error('Invalid room visibility.');
+  }
+
+  if (
+    !Number.isInteger(capacity) ||
+    capacity < 2 ||
+    capacity > config.maxPlayers
+  ) {
+    throw new Error('Invalid room capacity.');
+  }
+
+  if (
+    roomName.length > 32 ||
+    /[\u0000-\u001F\u007F]/.test(roomName)
+  ) {
+    throw new Error(
+      'Enter a room name of up to 32 characters.',
+    );
+  }
+
   const user = await ensureGuest();
 
   for (let i = 0; i < 5; i++) {
@@ -81,11 +156,26 @@ export async function createRoom(
           return false;
         }
 
+        const identity =
+          await readPlayerIdentity(tx, user.uid);
+
         tx.set(ref, {
           hostId: user.uid,
           status: 'lobby',
+
+          visibility,
+
+          roomName:
+            visibility === 'public'
+              ? roomName
+              : '',
+
+          maxPlayers: capacity,
           players: {
-            [user.uid]: name,
+            [user.uid]: identity.name,
+          },
+          playerAvatars: {
+            [user.uid]: identity.avatar,
           },
         });
 
@@ -106,10 +196,10 @@ export async function createRoom(
 export async function joinRoom(
   config: RoomConfig,
   codeInput: string,
-  playerName: string,
+  _playerName: string,
 ): Promise<string> {
   const code = validateCode(codeInput);
-  const name = validateName(playerName);
+
   const user = await ensureGuest();
 
   await runTransaction(db, async tx => {
@@ -140,15 +230,22 @@ export async function joinRoom(
 
     if (
       Object.keys(room.players).length >=
-      config.maxPlayers
+      getRoomCapacity(room, config)
     ) {
       throw new Error('Room is full.');
     }
 
+    const identity =
+      await readPlayerIdentity(tx, user.uid);
+
     tx.update(ref, {
       players: {
         ...room.players,
-        [user.uid]: name,
+        [user.uid]: identity.name,
+      },
+      playerAvatars: {
+        ...(room.playerAvatars ?? {}),
+        [user.uid]: identity.avatar,
       },
     });
   });
@@ -167,13 +264,26 @@ export function subscribeToRoom<
   return onSnapshot(
     getRoomRef(config, code),
 
-    snap =>
+    { includeMetadataChanges: true },
+
+    snap => {
+      // Cached data cannot confirm that a room
+      // was deleted or that a player was removed.
+      if (snap.metadata.fromCache) return;
+
+      if (snap.metadata.hasPendingWrites) return;
+
       onUpdate(
         snap.exists()
           ? (snap.data() as TRoom)
           : null,
-      ),
+      );
+    },
 
     error => onError(error.message),
   );
 }
+
+
+
+

@@ -1,3 +1,11 @@
+import ConnectionNotice from '../../multiplayer/ConnectionNotice';
+import useMatchMaintenance from '../../multiplayer/useMatchMaintenance';
+
+import {
+  maintainColorClashGame,
+} from './colorClashRooms';
+
+import DepartureNotice from '../../multiplayer/DepartureNotice';
 
 import {
     useLocalSearchParams,
@@ -68,6 +76,8 @@ import {
 
 import SoundButton from '../../audio/SoundButton';
 
+import CountdownBar from '../../multiplayer/timers/CountdownBar';
+
 import {
   useCountdownAudio,
 } from '../../audio/useCountdownAudio';
@@ -76,6 +86,7 @@ import ReactionBar from '../../multiplayer/ReactionBar';
 import ReactionBubble from '../../multiplayer/ReactionBubble';
 
 import CompactSeat from './CompactSeat';
+import { getPlayerAvatar } from '../../player/avatars';
 
 import {
   createTableLayout,
@@ -111,13 +122,6 @@ const COLOR_NAMES: ColorClashColor[] = [
   'yellow',
 ];
 
-const AVATARS = [
-  '🐼', '🦊', '🐱', '🐸',
-  '🐯', '🐨', '🐶', '🐰',
-  '🦁', '🐵', '🐧', '🦉',
-  '🐻', '🐙', '🦄', '🐹',
-  '🐢', '🦝', '🐥', '🐺',
-];
 
 const AVATAR_COLORS = [
   '#B2E4DF',
@@ -348,70 +352,24 @@ const HandCard = memo(function HandCard({
 const Countdown = memo(function Countdown({
   deadline,
   duration = TURN_DURATION_MS,
+  soundEnabled = true,
 }: {
   deadline: number;
   duration?: number;
+  soundEnabled?: boolean;
 }) {
-  const [now, setNow] =
-    useState(Date.now());
-
-  useCountdownAudio(deadline);
-
-  useEffect(() => {
-    setNow(Date.now());
-
-    const interval = setInterval(
-      () => setNow(Date.now()),
-      200,
-    );
-
-    return () =>
-      clearInterval(interval);
-  }, [deadline]);
-
-  const remaining = Math.max(
-    0,
-    deadline - now,
-  );
-
-  const seconds =
-    Math.ceil(remaining / 1000);
-
-  const progress = Math.min(
-    100,
-    (remaining / duration) * 100,
+  useCountdownAudio(
+    deadline,
+    soundEnabled,
   );
 
   return (
-    <View style={s.countdown}>
-      <Text
-        style={[
-          s.timerText,
-
-          seconds <= 5 &&
-            s.timerDanger,
-        ]}
-      >
-        {seconds}s
-      </Text>
-
-      <View style={s.timerTrack}>
-        <View
-          style={[
-            s.timerFill,
-
-            {
-              width: `${progress}%`,
-
-              backgroundColor:
-                seconds <= 5
-                  ? '#FF7187'
-                  : '#A5E1EB',
-            },
-          ]}
-        />
-      </View>
-    </View>
+    <CountdownBar
+      deadline={deadline}
+      duration={duration}
+      accent="#A5E1EB"
+      danger="#FF8398"
+    />
   );
 });
 
@@ -420,10 +378,12 @@ const Countdown = memo(function Countdown({
 // ==========================================
 
 const Avatar = memo(function Avatar({
+  avatar,
   index,
   active = false,
   connection,
 }: {
+  avatar?: string;
   index: number;
   active?: boolean;
   connection?: ConnectionStatus;
@@ -446,7 +406,7 @@ const Avatar = memo(function Avatar({
       ]}
     >
       <Text style={s.avatarEmoji}>
-        {AVATARS[i % AVATARS.length]}
+        {avatar ?? '👤'}
       </Text>
 
       {connection && (
@@ -470,6 +430,7 @@ const Avatar = memo(function Avatar({
 // ==========================================
 
 const PlayerSeat = memo(function PlayerSeat({
+  avatar,
   name,
   count,
   index,
@@ -480,13 +441,14 @@ const PlayerSeat = memo(function PlayerSeat({
   connection,
   reaction,
 }: {
+  avatar?: string;
   name: string;
   count: number;
   index: number;
   active: boolean;
   uno: boolean;
   host: boolean;
-  departure?: 'QUIT' | 'LEFT';
+  departure?: 'LEFT' | 'LEFT';
   reaction?: Reaction;
   connection: ConnectionStatus;
 }) {
@@ -505,6 +467,7 @@ const PlayerSeat = memo(function PlayerSeat({
     >
       <View style={s.reactionAvatar}>
         <Avatar
+          avatar={avatar}
           index={index}
           active={active && !departure}
 
@@ -961,6 +924,28 @@ export default function ColorClashGame() {
       member &&
         room?.status !== 'lobby',
     );
+
+  const maintenanceCoordinator = room
+    ? [
+        room.hostId,
+        ...Object.keys(room.players).filter(
+          id => id !== room.hostId,
+        ),
+      ].find(
+        id => statusOf(id) === 'online',
+      ) ?? room.hostId
+    : '';
+
+  useMatchMaintenance({
+    enabled:
+      !!member &&
+      room?.status === 'playing' &&
+      maintenanceCoordinator === uid,
+
+    code,
+    matchNumber: room?.matchNumber,
+    maintain: maintainColorClashGame,
+  });
 
   // ========================================
   // AUTHENTICATION
@@ -1610,13 +1595,16 @@ export default function ColorClashGame() {
 
     setError('');
 
-    feedback('uno');
-
     try {
       await callColorClashGameUno(
         code,
         windowId,
       );
+
+      // Play confirmation feedback only
+      // when the server accepts UNO.
+
+      feedback('uno');
 
       setUnoSubmission({
         id: windowId,
@@ -1698,7 +1686,7 @@ export default function ColorClashGame() {
         current.unoWindows ?? {},
       ).find(
         ([targetUid, window]) =>
-          now >= window.deadline + 750 &&
+          now >= window.deadline + 2000 &&
 
           !(
             targetUid === uid &&
@@ -1862,6 +1850,7 @@ export default function ColorClashGame() {
 
   const compactSeat = (playerId: string) => (
     <CompactSeat
+      avatar={getPlayerAvatar(room, playerId)}
       name={playerName(playerId)}
       count={room?.cardCounts?.[playerId] ?? 0}
       index={ids.indexOf(playerId)}
@@ -1890,6 +1879,7 @@ export default function ColorClashGame() {
     return (
       <PlayerSeat
         key={playerId}
+        avatar={getPlayerAvatar(room, playerId)}
 
         name={playerName(playerId)}
 
@@ -1922,7 +1912,7 @@ export default function ColorClashGame() {
           departed
 
             ? departed.quit
-              ? 'QUIT'
+              ? 'LEFT'
               : 'LEFT'
 
             : undefined
@@ -1984,10 +1974,10 @@ export default function ColorClashGame() {
 
         <TouchableOpacity
           style={s.button}
-          onPress={() => void exit()}
+          onPress={() => router.replace('/')}
         >
           <Text style={s.buttonText}>
-            Room Menu
+            Return to GameDen
           </Text>
         </TouchableOpacity>
       </View>
@@ -2048,6 +2038,10 @@ export default function ColorClashGame() {
             🏆
           </Text>
 
+          <ConnectionNotice status={statusOf(uid)} />
+
+      <DepartureNotice room={room} uid={uid} />
+
           <Text style={s.victoryTitle}>
             {winner
               ? 'YOU WIN!'
@@ -2089,6 +2083,7 @@ export default function ColorClashGame() {
                   ]}
                 >
                   <Avatar
+                    avatar={getPlayerAvatar(room, id)}
                     index={ids.indexOf(id)}
                     active={isWinner}
                   />
@@ -2111,7 +2106,7 @@ export default function ColorClashGame() {
                     }
                   >
                     {departed?.quit
-                      ? 'QUIT'
+                      ? 'LEFT'
 
                       : isWinner
                         ? 'Winner'
@@ -2238,7 +2233,32 @@ export default function ColorClashGame() {
   const canDraw =
     canAct &&
     !wild &&
-    !forced;
+    !forced &&
+    room.phase !== 'drawn';
+
+  // This card comes exclusively from
+  // the authenticated player's private hand.
+
+  const ownDrawnCard =
+    myTurn &&
+    ready &&
+    room.phase === 'drawn' &&
+    handState.drawnCardId
+      ? hand.find(
+          card =>
+            card.id === handState.drawnCardId,
+        )
+      : undefined;
+
+  const canPass =
+    canAct &&
+    room.phase === 'drawn' &&
+    !!ownDrawnCard &&
+    !wild;
+
+  const drawnCardPlayable =
+    !!ownDrawnCard &&
+    legal(ownDrawnCard);
 
   // ========================================
   // GAME INTERFACE
@@ -2292,6 +2312,7 @@ export default function ColorClashGame() {
             <View style={s.modalPanel}>
               <View style={s.detailAvatar}>
                 <Avatar
+                  avatar={getPlayerAvatar(room, selectedOpponent)}
                   index={ids.indexOf(
                     selectedOpponent,
                   )}
@@ -2331,7 +2352,7 @@ export default function ColorClashGame() {
                 {room.departedPlayers?.[
                   selectedOpponent
                 ]
-                  ? 'Left the match'
+                  ? 'LEFT - No longer participating'
                   : room.currentPlayerId ===
                       selectedOpponent
                     ? 'Currently playing'
@@ -2447,6 +2468,10 @@ export default function ColorClashGame() {
         </View>
       </Modal>
 
+      <ConnectionNotice status={statusOf(uid)} />
+
+      <DepartureNotice room={room} uid={uid} />
+
       {/* CURRENT TURN */}
 
       <View style={s.turnBanner}>
@@ -2477,6 +2502,10 @@ export default function ColorClashGame() {
         {!!room.turnDeadline && (
           <Countdown
             deadline={room.turnDeadline}
+            soundEnabled={
+              !!myTurn &&
+              !(ownWindow && !unoConfirmed)
+            }
           />
         )}
       </View>
@@ -2699,12 +2728,26 @@ export default function ColorClashGame() {
                   onLayout={event =>
                     recordLayout('deck', event)
                   }
-                  disabled={
-                    !canDraw ||
-                    room.phase === 'drawn'
+                  accessibilityRole="button"
+
+                  accessibilityLabel={
+                    penalty > 0
+                      ? `Draw ${penalty} penalty cards`
+                      : 'Draw a card'
                   }
 
+                  accessibilityState={{
+                    disabled: !canDraw,
+                  }}
+
+                  disabled={!canDraw}
+
                   activeOpacity={0.7}
+
+                  style={[
+                    s.drawPile,
+                    canDraw && s.drawPileActive,
+                  ]}
 
                   onPress={() =>
                     void run(() =>
@@ -2717,8 +2760,17 @@ export default function ColorClashGame() {
                 >
                   <CardBack />
 
-                  <Text style={s.pileLabel}>
-                    DRAW
+                  <Text
+                    style={[
+                      s.pileLabel,
+                      canDraw && s.drawLabelActive,
+                    ]}
+                  >
+                    {canDraw
+                      ? penalty > 0
+                        ? `DRAW ${penalty}`
+                        : 'TAP TO DRAW'
+                      : 'DRAW PILE'}
                   </Text>
                 </TouchableOpacity>
 
@@ -2835,6 +2887,7 @@ export default function ColorClashGame() {
               }
             >
               <Avatar
+                avatar={getPlayerAvatar(room, uid)}
                 index={myIndex}
 
                 active={!!myTurn}
@@ -3017,7 +3070,7 @@ export default function ColorClashGame() {
             !unoConfirmed && (
               <Countdown
                 deadline={ownWindow.deadline}
-                duration={5000}
+                duration={8000}
               />
             )}
 
@@ -3033,64 +3086,170 @@ export default function ColorClashGame() {
         </View>
       )}
 
-      {/* WILD COLOR SELECTION */}
+      {/* PRIVATE WILD COLOR SELECTION */}
 
-      {wild && (
-        <View style={s.panel}>
-          <Text style={s.heading}>
-            Choose a color
-          </Text>
+      <Modal
+        visible={
+          !!wild &&
+          !!myTurn &&
+          ready &&
+          !confirmQuit &&
+          !quitting
+        }
 
-          <View style={s.colorRow}>
-            {COLOR_NAMES.map(color => (
+        transparent
+
+        animationType="fade"
+
+        onRequestClose={() =>
+          setWild(null)
+        }
+      >
+        <View style={s.modalOverlay}>
+          {!!wild && (
+            <View style={s.wildModal}>
+              <Text style={s.wildModalTitle}>
+                Choose a color
+              </Text>
+
+              <Text style={s.muted}>
+                Select the next active color.
+              </Text>
+
+              <View style={s.selectedWildCard}>
+                <Card card={wild} />
+              </View>
+
+              {!!room.turnDeadline && (
+                <Countdown
+                  deadline={room.turnDeadline}
+                  soundEnabled={false}
+                />
+              )}
+
+              <View style={s.wildColorGrid}>
+                {COLOR_NAMES.map(color => (
+                  <TouchableOpacity
+                    key={color}
+
+                    accessibilityRole="button"
+
+                    accessibilityLabel={
+                      `Choose ${color}`
+                    }
+
+                    disabled={
+                      !canAct ||
+                      !legal(wild)
+                    }
+
+                    activeOpacity={0.75}
+
+                    style={[
+                      s.wildColorOption,
+
+                      {
+                        backgroundColor:
+                          COLORS[color],
+                      },
+
+                      (!canAct || !legal(wild)) &&
+                        s.dim,
+                    ]}
+
+                    onPress={() =>
+                      play(wild, color)
+                    }
+                  >
+                    <Text style={s.colorSymbol}>
+                      {{
+                        red: '●',
+                        blue: '◆',
+                        green: '▲',
+                        yellow: '■',
+                      }[color]}
+                    </Text>
+
+                    <Text style={s.colorOptionText}>
+                      {color.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <TouchableOpacity
-                key={color}
+                accessibilityRole="button"
 
-                disabled={!canAct}
-
-                style={[
-                  s.colorButton,
-
-                  {
-                    backgroundColor:
-                      COLORS[color],
-                  },
-                ]}
+                style={s.secondaryButton}
 
                 onPress={() =>
-                  play(wild, color)
+                  setWild(null)
                 }
               >
                 <Text style={s.white}>
-                  {color.toUpperCase()}
+                  Cancel
                 </Text>
               </TouchableOpacity>
-            ))}
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* PRIVATE DRAWN CARD DECISION */}
+
+      {myTurn && ownDrawnCard && !wild && (
+        <View style={s.drawDecision}>
+          <Text style={s.drawDecisionTitle}>
+            You drew a card
+          </Text>
+
+          <View style={s.drawPreview}>
+            <Card card={ownDrawnCard} />
+
+            <View style={s.drawDescription}>
+              <Text style={s.white}>
+                {drawnCardPlayable
+                  ? 'This card can be played.'
+                  : 'This card cannot be played.'}
+              </Text>
+
+              <Text style={s.muted}>
+                {drawnCardPlayable
+                  ? 'Play it now or keep it in your hand.'
+                  : 'Keep it in your hand and end your turn.'}
+              </Text>
+            </View>
           </View>
 
-          <TouchableOpacity
-            onPress={() =>
-              setWild(null)
-            }
-          >
-            <Text style={s.link}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+          {drawnCardPlayable && (
+            <TouchableOpacity
+              accessibilityRole="button"
 
-      {/* DRAW / PASS CONTROLS */}
+              disabled={!canAct}
 
-      <View style={s.controls}>
-        {room.phase === 'drawn' ? (
+              style={[
+                s.button,
+                !canAct && s.dim,
+              ]}
+
+              onPress={() =>
+                clickCard(ownDrawnCard)
+              }
+            >
+              <Text style={s.buttonText}>
+                Play Card
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
-            disabled={!canDraw}
+            accessibilityRole="button"
+
+            disabled={!canPass}
 
             style={[
-              s.button,
-
-              !canDraw && s.dim,
+              s.secondaryButton,
+              !canPass && s.dim,
             ]}
 
             onPress={() =>
@@ -3102,41 +3261,12 @@ export default function ColorClashGame() {
               )
             }
           >
-            <Text style={s.buttonText}>
+            <Text style={s.white}>
               Keep Card / Pass
             </Text>
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            disabled={!canDraw}
-
-            style={[
-              s.button,
-
-              !canDraw && s.dim,
-            ]}
-
-            onPress={() =>
-              void run(() =>
-                drawColorClashGameCard(
-                  code,
-                  rev,
-                ),
-              )
-            }
-          >
-            <Text style={s.buttonText}>
-              {busy
-                ? 'Processing…'
-
-                : penalty
-                  ? `Draw ${penalty} Cards`
-
-                  : 'Draw Card'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
 
       {/* INSTRUCTIONS */}
 
@@ -3160,9 +3290,13 @@ export default function ColorClashGame() {
 
                 : room.phase === 'drawn'
 
-                  ? 'Play the drawn card or keep it.'
+                  ? ownDrawnCard
+                    ? drawnCardPlayable
+                      ? 'Play your drawn card or keep it.'
+                      : 'Keep your drawn card to end your turn.'
+                    : 'Synchronizing your drawn card…'
 
-                  : 'Match the color or symbol to play.'}
+                  : 'Match the color or symbol, or tap the draw pile.'}
       </Text>
 
       {/* NETWORK / ERROR STATUS */}
@@ -3197,6 +3331,118 @@ export default function ColorClashGame() {
 // ==========================================
 
 const s = StyleSheet.create({
+
+  drawPile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    padding: 3,
+    minWidth: 60,
+  },
+
+  drawPileActive: {
+    borderColor: '#FFD071',
+    backgroundColor: '#FFD07115',
+    shadowColor: '#FFD071',
+    shadowOpacity: 0.65,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    elevation: 5,
+  },
+
+  drawLabelActive: {
+    color: '#FFD071',
+    fontWeight: '900',
+  },
+
+  wildModal: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#242841',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#505775',
+    padding: 20,
+    gap: 16,
+  },
+
+  wildModalTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  selectedWildCard: {
+    alignItems: 'center',
+    paddingVertical: 5,
+  },
+
+  wildColorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+
+  wildColorOption: {
+    width: '47%',
+    minHeight: 86,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#FFFFFF35',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    padding: 12,
+  },
+
+  colorSymbol: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 26,
+  },
+
+  colorOptionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  drawDecision: {
+    backgroundColor: '#293650',
+    borderWidth: 1.5,
+    borderColor: '#A5E1EB',
+    borderRadius: 17,
+    padding: 15,
+    gap: 12,
+  },
+
+  drawDecisionTitle: {
+    color: '#A5E1EB',
+    fontWeight: '900',
+    fontSize: 19,
+    textAlign: 'center',
+  },
+
+  drawPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 8,
+  },
+
+  drawDescription: {
+    flex: 1,
+    gap: 6,
+    minWidth: 0,
+  },
+
   root: {
     flex: 1,
     backgroundColor: '#121629',
@@ -4127,6 +4373,19 @@ const s = StyleSheet.create({
     borderRadius: 2,
   },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

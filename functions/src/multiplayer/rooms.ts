@@ -12,6 +12,9 @@ export type BackendRoomConfig = {
 };
 
 export type MultiplayerRoom = {
+  visibility?: 'private' | 'public';
+  roomName?: string;
+  maxPlayers?: number;
   hostId: string;
   status: 'lobby' | 'playing' | 'finished';
   players: Record<string, string>;
@@ -107,5 +110,6 @@ export function requireHost(
     );
   }
 }
+
 
 

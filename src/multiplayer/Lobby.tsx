@@ -1,3 +1,13 @@
+import RoomCreationSettings from './RoomCreationSettings';
+import { getRoomCapacity } from './types';
+import type { RoomCreationOptions } from './types';
+
+import InvitePanel from './InvitePanel';
+import { parseInvite } from './invitations';
+import { useLocalSearchParams } from 'expo-router';
+
+import { usePlayer } from '../player/PlayerProvider';
+import { getPlayerAvatar } from '../player/avatars';
 
 import {
   useRouter
@@ -83,28 +93,6 @@ type Confirmation = {
 // CONFIGURATION
 // ==========================================
 
-const AVATARS = [
-  '🐼',
-  '🦊',
-  '🐱',
-  '🐸',
-  '🐯',
-  '🐨',
-  '🐶',
-  '🐰',
-  '🦁',
-  '🐵',
-  '🐧',
-  '🦉',
-  '🐻',
-  '🐙',
-  '🦄',
-  '🐹',
-  '🐢',
-  '🦝',
-  '🐥',
-  '🐺',
-];
 
 const AVATAR_COLORS = [
   '#B2E4DF',
@@ -128,14 +116,53 @@ const STATUS_COLORS = {
 export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyConfig }) {
   const router = useRouter();
 
+  const { inviteCode } =
+    useLocalSearchParams<{
+      inviteCode?: string;
+    }>();
+
+  const incomingInvite =
+    parseInvite(
+      config.gameId,
+      inviteCode,
+    );
+
   const [phase, setPhase] =
     useState<ScreenPhase>('home');
 
-  const [name, setName] =
-    useState('');
+  const { profile, isGuest } = usePlayer();
+
+  const name = profile?.nickname ?? '';
+
+  const [creationOptions, setCreationOptions] =
+    useState<RoomCreationOptions>({
+      visibility: 'private',
+      roomName: '',
+      maxPlayers: Math.min(
+        4,
+        config.room.maxPlayers,
+      ),
+    });
 
   const [codeInput, setCodeInput] =
-    useState('');
+    useState(incomingInvite?.code ?? '');
+
+  useEffect(() => {
+    if (incomingInvite) {
+      setCodeInput(incomingInvite.code);
+    }
+  }, [incomingInvite?.code]);
+
+  const [entryMode, setEntryMode] =
+    useState<'create' | 'join'>(
+      incomingInvite ? 'join' : 'create',
+    );
+
+  useEffect(() => {
+    if (incomingInvite) {
+      setEntryMode('join');
+    }
+  }, [incomingInvite?.code]);
 
   const [roomCode, setRoomCode] =
     useState('');
@@ -178,6 +205,7 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
 
     const initialize = async () => {
       try {
+
         const user = await ensureGuest();
 
         if (!alive) return;
@@ -193,7 +221,7 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
           session &&
           session.uid === user.uid
         ) {
-          setName(session.playerName);
+
           setRoomCode(session.code);
           setPhase('lobby');
 
@@ -445,7 +473,11 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
   const createRoom = () =>
     run(async () => {
       const code =
-        await createMultiplayerRoom(config.room, name);
+        await createMultiplayerRoom(
+          config.room,
+          name,
+          creationOptions,
+        );
 
       const user =
         await getMatchUser();
@@ -606,12 +638,17 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
   const playerCount =
     players.length;
 
+  const roomCapacity =
+    getRoomCapacity(
+      room,
+      config.room,
+    );
+
   const canStart =
     isHost &&
     room?.status === 'lobby' &&
     playerCount >= config.minPlayers &&
-    playerCount <=
-      config.room.maxPlayers;
+    playerCount <= roomCapacity;
 
   // ========================================
   // INITIAL LOADING SCREEN
@@ -674,26 +711,84 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
       {phase === 'home' && (
         <View style={s.panel}>
           <Text style={s.heading}>
-            Play Online
+            {entryMode === 'create'
+              ? 'Create Room'
+              : 'Join Room'}
           </Text>
 
           <Text style={s.muted}>
-            Create a private room or join
-            your friends.
+            {entryMode === 'create'
+              ? 'Customize your room and invite players.'
+              : 'Enter a room code to join an existing game.'}
           </Text>
 
-          <Text style={s.label}>
-            YOUR NICKNAME
-          </Text>
+          <View style={s.playerRow}>
+            <View style={[
+              s.avatar,
+              { backgroundColor: '#D7B9F4' },
+            ]}>
+              <Text style={s.avatarText}>
+                {profile?.avatar ?? '👤'}
+              </Text>
+            </View>
 
-          <TextInput
-            style={s.input}
-            value={name}
-            onChangeText={setName}
-            maxLength={24}
-            placeholder="Enter your name"
-            placeholderTextColor="#969BB7"
-            editable={!loading}
+            <View style={s.playerInfo}>
+              <Text style={s.playerName}>
+                {name}
+              </Text>
+
+              <Text style={s.muted}>
+                {isGuest
+                  ? 'Playing as guest'
+                  : 'GameDen account'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={s.entryTabs}>
+            {(['create', 'join'] as const).map(mode => (
+              <TouchableOpacity
+                key={mode}
+                accessibilityRole="button"
+                accessibilityState={{
+                  selected: entryMode === mode,
+                }}
+                disabled={loading}
+                style={[
+                  s.entryTab,
+                  entryMode === mode &&
+                    s.entryTabActive,
+                ]}
+                onPress={() => {
+                  setEntryMode(mode);
+                  setError('');
+                }}
+              >
+                <Text style={[
+                  s.entryTabText,
+                  entryMode === mode &&
+                    s.entryTabTextActive,
+                ]}>
+                  {mode === 'create'
+                    ? '+ Create Room'
+                    : 'Join Room'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {entryMode === 'create' && (
+            <>
+          <RoomCreationSettings
+            value={creationOptions}
+
+            onChange={setCreationOptions}
+
+            minPlayers={config.minPlayers}
+
+            maxPlayers={config.room.maxPlayers}
+
+            disabled={loading}
           />
 
           <TouchableOpacity
@@ -715,19 +810,17 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
             onPress={createRoom}
           >
             <Text style={s.primaryText}>
-              + Create Room
+              {creationOptions.visibility === 'public'
+                ? '+ Create Public Room'
+                : '+ Create Private Room'}
             </Text>
           </TouchableOpacity>
 
-          <View style={s.separator}>
-            <View style={s.divider} />
+            </>
+          )}
 
-            <Text style={s.muted}>
-              OR
-            </Text>
-
-            <View style={s.divider} />
-          </View>
+          {entryMode === 'join' && (
+            <>
 
           <Text style={s.label}>
             ROOM CODE
@@ -777,6 +870,9 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
             </Text>
           </TouchableOpacity>
 
+            </>
+          )}
+
           <Text style={s.smallMuted}>
             Supports {config.minPlayers}–{config.room.maxPlayers} players
           </Text>
@@ -790,8 +886,16 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
           {/* ROOM CODE */}
 
           <View style={s.codePanel}>
+
+            {!!room?.roomName && (
+              <Text style={s.heading}>
+                {room.roomName}
+              </Text>
+            )}
             <Text style={s.label}>
-              PRIVATE ROOM CODE
+              {room?.visibility === 'public'
+                ? '🌐 PUBLIC ROOM'
+                : '🔒 PRIVATE ROOM'}
             </Text>
 
             <Text
@@ -805,6 +909,17 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
               Share this code with your friends.
             </Text>
           </View>
+
+          {room &&
+            room.status === 'lobby' &&
+            roomCode && (
+              <InvitePanel
+                key={roomCode}
+                game={config.gameId}
+                code={roomCode}
+                disabled={loading}
+              />
+            )}
 
           {/* CONNECTION SUMMARY */}
 
@@ -828,7 +943,7 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
 
             <Text style={s.muted}>
               {playerCount}/
-              {config.room.maxPlayers}
+              {roomCapacity}
               {' '}players
             </Text>
           </View>
@@ -885,10 +1000,7 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
                     >
                       <Text style={s.avatarText}>
                         {
-                          AVATARS[
-                            index %
-                            AVATARS.length
-                          ]
+                          getPlayerAvatar(room, uid)
                         }
                       </Text>
 
@@ -1201,6 +1313,38 @@ export default function MultiplayerLobby({ config }: { config: MultiplayerLobbyC
 // ==========================================
 
 const s = StyleSheet.create({
+
+  entryTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#15182D',
+    borderRadius: 14,
+    padding: 5,
+    gap: 5,
+  },
+
+  entryTab: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+
+  entryTabActive: {
+    backgroundColor: '#A5E1EB',
+  },
+
+  entryTabText: {
+    color: '#A6A9C4',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  entryTabTextActive: {
+    color: '#15313C',
+  },
+
   root: {
     flex: 1,
     backgroundColor: '#15182D',
@@ -1543,6 +1687,15 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
 });
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,3 +1,7 @@
+import ConnectionNotice from '../../multiplayer/ConnectionNotice';
+import PlayerAvatar from '../../player/PlayerAvatar';
+import DepartedPlayers from '../../multiplayer/DepartedPlayers';
+import DepartureNotice from '../../multiplayer/DepartureNotice';
 import {
   useEffect,
   useRef,
@@ -28,13 +32,13 @@ import {
 } from '../../multiplayer/auth';
 
 import {
-  startHeartbeat,
   leaveRoom,
   useMultiplayerPresence,
 } from '../../multiplayer/presence';
 
 import {
   clearSession,
+  saveSession,
 } from '../../multiplayer/session';
 
 import {
@@ -175,6 +179,32 @@ function Match({
     member &&
     room?.hostId === uid;
 
+  const currentName = uid
+    ? room?.players[uid]
+    : undefined;
+
+  useEffect(() => {
+    if (
+      !member ||
+      !currentName ||
+      leaving.current
+    ) {
+      return;
+    }
+
+    void saveSession(
+      'doodle-clash',
+      code,
+      uid,
+      currentName,
+    ).catch(() => {});
+  }, [
+    member,
+    currentName,
+    code,
+    uid,
+  ]);
+
   const sync = useDrawingSync(
     code,
     room,
@@ -299,14 +329,7 @@ function Match({
     };
   }, [code]);
 
-  useEffect(() => {
-    if (!member) return;
 
-    return startHeartbeat(
-      DOODLE_CLASH_CONFIG.presence,
-      code,
-    );
-  }, [code, member]);
 
   useEffect(() => {
     if (
@@ -446,10 +469,10 @@ function Match({
         <Pressable
           disabled={busy}
           style={s.button}
-          onPress={() => void leave()}
+          onPress={() => router.replace('/')}
         >
           <Text style={s.buttonText}>
-            Return to lobby
+            Return to GameDen
           </Text>
         </Pressable>
       </View>
@@ -472,6 +495,10 @@ function Match({
         },
       ]}
     >
+      <ConnectionNotice status={statusOf(uid)} />
+
+      <DepartureNotice room={room} uid={uid} />
+
       <SoundFeedback
         room={room}
         uid={uid}
@@ -667,6 +694,8 @@ function Match({
         </Text>
       )}
 
+      <DepartedPlayers room={room} />
+
       <View style={s.playerPanel}>
         <Text style={s.sectionTitle}>
           Players ({players.length})
@@ -693,6 +722,8 @@ function Match({
                   },
                 ]}
               />
+
+              <PlayerAvatar room={room} uid={id} size={32} />
 
               <Text style={s.playerName}>
                 {room.players[id]}
@@ -874,6 +905,14 @@ const s = StyleSheet.create({
     fontSize: 13,
   },
 });
+
+
+
+
+
+
+
+
 
 
 

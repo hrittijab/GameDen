@@ -157,6 +157,28 @@ async function initializeMatch(
       // Preserve the selected player avatars
       // when replacing the lobby document.
 
+      // Preserve matchmaking settings
+      // when starting a match or rematch.
+
+      room.visibility =
+        old.visibility === 'public'
+          ? 'public'
+          : 'private';
+
+      room.roomName =
+        typeof old.roomName === 'string'
+          ? old.roomName
+          : '';
+
+      room.maxPlayers =
+        typeof old.maxPlayers === 'number' &&
+        Number.isInteger(old.maxPlayers) &&
+        old.maxPlayers >= 2 &&
+        old.maxPlayers <= 20
+
+          ? old.maxPlayers
+          : 20;
+
       room.playerAvatars = {};
 
       for (const playerId of room.playerOrder) {
@@ -419,6 +441,7 @@ export const callColorClashUno = onCall(
   options,
 
   async request => {
+    const receivedAt = Date.now();
     const {
       uid,
       roomRef,
@@ -440,7 +463,7 @@ export const callColorClashUno = onCall(
     // Capture server receipt time before
     // starting the Firestore transaction.
 
-    const receivedAt = Date.now();
+
 
     try {
       return await db.runTransaction(async tx => {
@@ -599,6 +622,8 @@ export const resolveColorClashUno = onCall(
     }
   },
 );
+
+
 
 
 

@@ -1,10 +1,15 @@
 import {
   useEffect,
+  useRef,
 } from 'react';
 
 import {
   useGameAudio,
 } from './useGameAudio';
+
+import {
+  useCountdown,
+} from '../multiplayer/timers/useCountdown';
 
 export function useCountdownAudio(
   deadline?: number,
@@ -13,42 +18,47 @@ export function useCountdownAudio(
 ) {
   const { play } = useGameAudio();
 
+  const timer = useCountdown(
+    deadline,
+    undefined,
+    enabled,
+  );
+
+  const last = useRef<{
+    deadline: number | undefined;
+    seconds: number;
+  } | null>(null);
+
   useEffect(() => {
-    if (!enabled || !deadline) return;
+    if (!enabled || !timer.valid) {
+      last.current = null;
+      return;
+    }
 
-    let previous = Math.max(
-      0,
-      Math.ceil(
-        (deadline - Date.now()) / 1000,
-      ),
-    );
+    const previous = last.current;
 
-    const timer = setInterval(() => {
-      const seconds = Math.max(
-        0,
-        Math.ceil(
-          (deadline - Date.now()) / 1000,
-        ),
-      );
+    last.current = {
+      deadline,
+      seconds: timer.seconds,
+    };
 
-      if (
-        seconds !== previous &&
-        seconds > 0 &&
-        seconds <= finalSeconds
-      ) {
-        play('countdown');
-      }
+    const newDeadline =
+      previous?.deadline !== deadline;
 
-      previous = seconds;
-
-      if (seconds === 0) {
-        clearInterval(timer);
-      }
-    }, 100);
-
-    return () => clearInterval(timer);
+    if (
+      timer.seconds > 0 &&
+      timer.seconds <= finalSeconds &&
+      (
+        newDeadline ||
+        previous?.seconds !== timer.seconds
+      )
+    ) {
+      play('countdown');
+    }
   }, [
     deadline,
+    timer.valid,
+    timer.seconds,
     enabled,
     finalSeconds,
     play,

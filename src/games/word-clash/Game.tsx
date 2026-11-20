@@ -1,3 +1,8 @@
+import ConnectionNotice from '../../multiplayer/ConnectionNotice';
+import PlayerAvatar from '../../player/PlayerAvatar';
+import { getPlayerAvatar } from '../../player/avatars';
+import DepartedPlayers from '../../multiplayer/DepartedPlayers';
+import DepartureNotice from '../../multiplayer/DepartureNotice';
 import {
   useEffect,
   useRef,
@@ -31,13 +36,13 @@ import {
 } from '../../multiplayer/auth';
 
 import {
-  startHeartbeat,
   leaveRoom,
   useMultiplayerPresence,
 } from '../../multiplayer/presence';
 
 import {
   clearSession,
+  saveSession,
 } from '../../multiplayer/session';
 
 import {
@@ -62,6 +67,16 @@ import {
 
 import SoundFeedback from './SoundFeedback';
 import SoundButton from '../../audio/SoundButton';
+
+import CountdownRing from '../../multiplayer/timers/CountdownRing';
+
+import CountdownSplash from '../../multiplayer/timers/CountdownSplash';
+
+import GoFlash from '../../multiplayer/timers/GoFlash';
+
+import {
+  useCountdown,
+} from '../../multiplayer/timers/useCountdown';
 import ReactionBar from '../../multiplayer/ReactionBar';
 import ReactionStrip from '../../multiplayer/ReactionStrip';
 import ReactionBubble from '../../multiplayer/ReactionBubble';
@@ -157,6 +172,32 @@ function Match({
     member &&
     room?.hostId === uid;
 
+  const currentName = uid
+    ? room?.players[uid]
+    : undefined;
+
+  useEffect(() => {
+    if (
+      !member ||
+      !currentName ||
+      leaving.current
+    ) {
+      return;
+    }
+
+    void saveSession(
+      'word-clash',
+      code,
+      uid,
+      currentName,
+    ).catch(() => {});
+  }, [
+    member,
+    currentName,
+    code,
+    uid,
+  ]);
+
   const { statusOf } =
     useMultiplayerPresence(
       WORD_CLASH_CONFIG.presence,
@@ -205,14 +246,7 @@ function Match({
     };
   }, [code]);
 
-  useEffect(() => {
-    if (!member) return;
 
-    return startHeartbeat(
-      WORD_CLASH_CONFIG.presence,
-      code,
-    );
-  }, [code, member]);
 
   const coordinator = room
     ? [
@@ -349,10 +383,10 @@ function Match({
         <Pressable
           style={s.button}
           disabled={busy}
-          onPress={() => void leave()}
+          onPress={() => router.replace('/')}
         >
           <Text style={s.buttonText}>
-            Return to lobby
+            Return to GameDen
           </Text>
         </Pressable>
       </View>
@@ -389,6 +423,10 @@ function Match({
         },
       ]}
     >
+      <ConnectionNotice status={statusOf(uid)} />
+
+      <DepartureNotice room={room} uid={uid} />
+
       <SoundFeedback
         room={room}
         uid={uid}
@@ -455,7 +493,7 @@ function Match({
               key={id}
               style={s.winnerScore}
             >
-              {room.players[id]}:
+              {getPlayerAvatar(room, id)}{' '}{room.players[id]}:
               {' '}{room.scores?.[id] ?? 0} points
             </Text>
           ))}
@@ -483,6 +521,8 @@ function Match({
       )}
 
 
+
+      <DepartedPlayers room={room} />
 
       <View style={s.panel}>
         <Text style={s.sectionTitle}>
@@ -513,6 +553,12 @@ function Match({
                           : '#FFD071',
                   },
                 ]} />
+
+                <PlayerAvatar
+                  room={room}
+                  uid={id}
+                  size={30}
+                />
 
                 <Text
                   style={s.name}
@@ -579,8 +625,20 @@ function Round({
   uid: string;
   disabled: boolean;
 }) {
-  const [now, setNow] =
-    useState(Date.now());
+  const duration =
+    room.phase === 'choosing'
+      ? 10000
+      : room.phase === 'countdown'
+        ? 3000
+        : room.phase === 'typing'
+          ? room.roundMs ?? 20000
+          : 6000;
+
+  const countdown = useCountdown(
+    room.deadline,
+    duration,
+    room.status === 'playing',
+  );
 
   const [word, setWord] =
     useState('');
@@ -600,10 +658,7 @@ function Round({
     room.submittedIds?.includes(uid) ||
     lockedWord !== null;
 
-  const seconds = Math.max(
-    0,
-    Math.ceil((room.deadline - now) / 1000),
-  );
+  const seconds = countdown.seconds;
 
   const count =
     Object.keys(room.players).length;
@@ -654,17 +709,10 @@ function Round({
         .endsWith(room.endingLetter)
     );
 
-  useEffect(() => {
-    const timer = setInterval(
-      () => setNow(Date.now()),
-      200,
-    );
 
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
-    if (seconds > 0) return;
+    if (!countdown.expired) return;
 
     let active = true;
     let pending = false;
@@ -701,7 +749,8 @@ function Round({
     room.matchNumber,
     room.roundNumber,
     room.phase,
-    seconds,
+    room.deadline,
+    countdown.expired,
   ]);
 
   useEffect(() => {
@@ -785,6 +834,14 @@ function Round({
 
   return (
     <Animated.View style={{ gap: 12, opacity: fade }}>
+      <GoFlash
+        visible={
+          room.phase === 'typing' &&
+          countdown.remainingMs > 0 &&
+          countdown.remainingMs >= duration - 900
+        }
+      />
+
       <View style={s.roundHeader}>
         <View style={{ flex: 1 }}>
           <Text style={s.label}>
@@ -802,12 +859,13 @@ function Round({
           </Text>
         </View>
 
-        <Text style={[
-          s.timer,
-          seconds <= 5 && s.urgent,
-        ]}>
-          {seconds}s
-        </Text>
+        <CountdownRing
+          seconds={seconds}
+          progress={countdown.progress}
+          size={78}
+          accent="#FFD071"
+          warningSeconds={5}
+        />
       </View>
 
       <View style={s.challengePanel}>
@@ -847,9 +905,10 @@ function Round({
             {room.letter}
           </Text>
 
-          <Text style={s.sectionTitle}>
-            Starting in {seconds}...
-          </Text>
+          <CountdownSplash
+            seconds={seconds}
+            accent="#FFD071"
+          />
 
           <Text style={s.caption}>
             Think of a unique word.
@@ -1386,6 +1445,17 @@ const s = StyleSheet.create({
     fontWeight: '900',
   },
 });
+
+
+
+
+
+
+
+
+
+
+
 
 
 

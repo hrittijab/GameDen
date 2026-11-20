@@ -10,7 +10,8 @@ export const COLORS = [
 
 export const MAX_PLAYERS = 20;
 export const TURN_DURATION_MS = 20000;
-export const UNO_WINDOW_MS = 5000;
+export const UNO_WINDOW_MS = 8000;
+export const UNO_GRACE_MS = 2000;
 export const ENGINE_VERSION = 5;
 
 export type Color = typeof COLORS[number];
@@ -54,6 +55,9 @@ export type GameEvent = {
 };
 
 export type Room = {
+  visibility?: 'private' | 'public';
+  roomName?: string;
+  maxPlayers?: number;
   playerAvatars?: Record<string, string>;
   hostId: string;
   status: 'lobby' | 'playing' | 'finished';
@@ -478,7 +482,7 @@ export function announceUno(
   );
 
   requireRule(
-    now < window.deadline,
+    now < window.deadline + UNO_GRACE_MS,
     'UNO announcement expired.',
   );
 
@@ -517,7 +521,7 @@ export function resolveUno(
   }
 
   requireRule(
-    now >= window.deadline,
+    now >= window.deadline + UNO_GRACE_MS,
     'UNO deadline has not expired.',
   );
 
@@ -887,10 +891,13 @@ export function apply(
         cards.length,
       );
 
+      // Every ordinary manual draw receives the
+      // same decision phase, regardless of playability.
+      // The drawn card remains private.
+
       if (
         cards.length > 0 &&
-        now < room.turnDeadline &&
-        legal(cards[0], hand, room, state)
+        now < room.turnDeadline
       ) {
         state.drawnCardId = cards[0].id;
 
@@ -902,7 +909,7 @@ export function apply(
         );
 
         room.lastAction =
-          `${name} drew a playable card.`;
+          `${name} drew a card.`;
       } else {
         room.lastAction = cards.length
           ? `${name} drew a card and passed.`
@@ -933,5 +940,8 @@ export function apply(
 
   sync(room, hands);
 }
+
+
+
 
 

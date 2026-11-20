@@ -4,6 +4,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Server-managed public room discovery.
+
+    match /publicRooms/{roomId} {
+      allow get: if request.auth != null
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        )
+        && !exists(
+          /databases/$(database)/documents/accountDeletions/$(request.auth.uid)
+        );
+
+      allow list: if request.auth != null
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        )
+        && !exists(
+          /databases/$(database)/documents/accountDeletions/$(request.auth.uid)
+        )
+        && request.query.limit <= 50;
+
+      allow create, update, delete: if false;
+    }
+
+
+    match /accountDeletions/{uid} {
+      allow read, write: if false;
+    }
+
+    function accountIsActive() {
+      return request.auth != null
+
+        && !exists(
+          /databases/$(database)/documents/accountDeletions/$(request.auth.uid)
+        );
+    }
+
     function hasPlayerProfile() {
       return request.auth != null
         && exists(
@@ -46,7 +82,8 @@ service cloud.firestore {
 
       let data = request.resource.data;
 
-      return hasPlayerProfile()
+      return accountIsActive()
+        && hasPlayerProfile()
 
         && data.players[request.auth.uid]
           == profile.nickname
@@ -55,6 +92,43 @@ service cloud.firestore {
 
         && data.playerAvatars[request.auth.uid]
           == profile.avatar;
+    }
+
+    function validRoomOptions(limit) {
+      let data = request.resource.data;
+
+      return data.keys().hasAll([
+          'visibility',
+          'roomName',
+          'maxPlayers'
+        ])
+
+        && data.visibility in ['private', 'public']
+
+        && data.roomName is string
+        && data.roomName.size() <= 32
+
+        && (
+          data.visibility == 'public'
+          || data.roomName == ''
+        )
+
+        && data.maxPlayers is int
+        && data.maxPlayers >= 2
+        && data.maxPlayers <= limit;
+    }
+
+    function validRoomCapacity(limit) {
+      let capacity =
+        resource.data.get('maxPlayers', limit);
+
+      return capacity is int
+
+        && capacity >= 2
+        && capacity <= limit
+
+        && request.resource.data.players.size()
+          <= capacity;
     }
 
     function validCreatedAvatars() {
@@ -127,11 +201,13 @@ service cloud.firestore {
       allow list: if false;
 
       allow create: if isOwner()
+        && accountIsActive()
         && validProfile()
         && request.resource.data.createdAt
           == request.time;
 
       allow update: if isOwner()
+        && accountIsActive()
         && validProfile()
         && request.resource.data.createdAt
           == resource.data.createdAt;
@@ -168,8 +244,13 @@ service cloud.firestore {
             'hostId',
             'status',
             'players',
-            'playerAvatars'
+            'playerAvatars',
+            'visibility',
+            'roomName',
+            'maxPlayers'
           ])
+
+        && validRoomOptions(20)
 
         && request.resource.data.hostId
           == request.auth.uid
@@ -201,8 +282,7 @@ service cloud.firestore {
           .affectedKeys()
           .hasOnly(['players', 'playerAvatars'])
 
-        && request.resource.data.players
-          .size() <= 20
+        && validRoomCapacity(20)
 
         && !resource.data.players
           .keys().hasAny([
@@ -314,7 +394,17 @@ service cloud.firestore {
         && roomCode.matches('^[A-HJ-NP-Z2-9]{8}$')
 
         && request.resource.data.keys()
-          .hasOnly(['hostId', 'status', 'players', 'playerAvatars'])
+          .hasOnly([
+            'hostId',
+            'status',
+            'players',
+            'playerAvatars',
+            'visibility',
+            'roomName',
+            'maxPlayers'
+          ])
+
+        && validRoomOptions(12)
 
         && request.resource.data.hostId
           == request.auth.uid
@@ -338,7 +428,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data)
           .affectedKeys().hasOnly(['players', 'playerAvatars'])
 
-        && request.resource.data.players.size() <= 12
+        && validRoomCapacity(12)
 
         && !resource.data.players
           .keys().hasAny([request.auth.uid])
@@ -425,7 +515,17 @@ service cloud.firestore {
         && roomCode.matches('^[A-HJ-NP-Z2-9]{8}$')
 
         && request.resource.data.keys()
-          .hasOnly(['hostId', 'status', 'players', 'playerAvatars'])
+          .hasOnly([
+            'hostId',
+            'status',
+            'players',
+            'playerAvatars',
+            'visibility',
+            'roomName',
+            'maxPlayers'
+          ])
+
+        && validRoomOptions(12)
 
         && request.resource.data.hostId
           == request.auth.uid
@@ -449,7 +549,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data)
           .affectedKeys().hasOnly(['players', 'playerAvatars'])
 
-        && request.resource.data.players.size() <= 12
+        && validRoomCapacity(12)
 
         && !resource.data.players
           .keys().hasAny([request.auth.uid])
@@ -494,6 +594,9 @@ service cloud.firestore {
 
   }
 }
+
+
+
 
 
 

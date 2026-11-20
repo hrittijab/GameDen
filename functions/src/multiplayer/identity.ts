@@ -1,3 +1,4 @@
+import { requireActiveAccount } from '../accounts/deletionGuard';
 import {
   HttpsError,
 } from 'firebase-functions/v2/https';
@@ -18,6 +19,8 @@ export type PlayerIdentity = {
 export async function requirePlayerProfile(
   uid: string,
 ): Promise<PlayerIdentity> {
+  await requireActiveAccount(uid);
+
   const snapshot = await db
     .collection('users')
     .doc(uid)
@@ -51,3 +54,4 @@ export async function requirePlayerProfile(
     avatar: data.avatar,
   };
 }
+

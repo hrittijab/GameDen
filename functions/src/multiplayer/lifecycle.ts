@@ -10,7 +10,7 @@ import {
   type CallableRequest,
 } from 'firebase-functions/v2/https';
 
-import { options } from './firebase';
+import { db, options } from './firebase';
 
 import {
   roomContext,
@@ -112,7 +112,6 @@ export function createLifecycleHandlers(
     kick: boolean,
   ) {
     const {
-      db,
       uid,
       roomRef,
       secretRef,
@@ -132,6 +131,51 @@ export function createLifecycleHandlers(
         'Invalid player.',
       );
     }
+
+    return removePlayerFromRoom(
+      roomRef,
+      secretRef,
+      uid,
+      targetUid,
+      kick,
+      handleMatchDeparture,
+    );
+  }
+
+  const leave = onCall(
+    options,
+    request => removePlayer(request, false),
+  );
+
+  const kick = onCall(
+    options,
+    request => removePlayer(request, true),
+  );
+
+  return { leave, kick };
+}
+
+
+
+
+
+
+
+
+export async function removePlayerFromRoom(
+  roomRef: DocumentReference,
+  secretRef: DocumentReference,
+  uid: string,
+  targetUid: string,
+  kick: boolean,
+  handleMatchDeparture: DepartureHandler,
+): Promise<{ success: boolean }> {
+  if (!kick && uid !== targetUid) {
+    throw new HttpsError(
+      'permission-denied',
+      'Cannot remove another account.',
+    );
+  }
 
     return db.runTransaction(async tx => {
       const snap = await tx.get(roomRef);
@@ -240,23 +284,5 @@ export function createLifecycleHandlers(
         handleMatchDeparture,
       );
     });
-  }
-
-  const leave = onCall(
-    options,
-    request => removePlayer(request, false),
-  );
-
-  const kick = onCall(
-    options,
-    request => removePlayer(request, true),
-  );
-
-  return { leave, kick };
 }
-
-
-
-
-
 

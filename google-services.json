@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "857656133263",
+    "project_id": "gameden-online",
+    "storage_bucket": "gameden-online.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:857656133263:android:6ae8c3877e8149391d52fa",
+        "android_client_info": {
+          "package_name": "com.gameden.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "857656133263-k2mcm4dnit22npehc70da9856rl5tvhr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gameden.app",
+            "certificate_hash": "5475bed5381bf0b75b4f3d8e2c1e9db98b1c1f21"
+          }
+        },
+        {
+          "client_id": "857656133263-578me8cjl1ojvii44hqisp5po9sb8pu7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBB2qWKPGbeRjAt4Wos1-QxPz4zpsnLZGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "857656133263-578me8cjl1ojvii44hqisp5po9sb8pu7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

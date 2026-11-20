@@ -101,3 +101,24 @@ export {
 export {
   maintainColorClashMatch,
 } from './color-clash/maintenance';
+
+// ==========================================
+// ACCOUNT MANAGEMENT
+// ==========================================
+
+export {
+  deleteGameDenAccount,
+} from './accounts/deleteAccount';
+
+
+export {
+  syncColorClashDirectory,
+  syncDoodleClashDirectory,
+  syncWordClashDirectory,
+} from './multiplayer/directory';
+
+export {
+  syncColorClashPresenceDirectory,
+  syncDoodleClashPresenceDirectory,
+  syncWordClashPresenceDirectory,
+} from './multiplayer/directory';
